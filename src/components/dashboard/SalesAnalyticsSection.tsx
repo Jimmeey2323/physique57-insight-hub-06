@@ -50,7 +50,7 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [activeYoyMetric, setActiveYoyMetric] = useState<YearOnYearMetricType>('revenue');
   const [filters, setFilters] = useState<FilterOptions>({
-    dateRange:[],
+    dateRange: { start: '', end: '' },
     location: [],
     category: [],
     product: [],
