@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -189,7 +188,7 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
               <SalesAnimatedMetricCards data={filteredData} />
 
               {/* Interactive Charts */}
-              <SalesInteractiveCharts data={allHistoricData} />
+              <SalesInteractiveCharts data={allHistoricData} filters={filters} />
 
               {/* Top/Bottom Performers */}
               <UnifiedTopBottomSellers data={filteredData} />
@@ -242,6 +241,8 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
                       data={allHistoricData}
                       onRowClick={handleRowClick}
                       selectedMetric={activeYoyMetric}
+                      collapsedGroups={collapsedGroups}
+                      onGroupToggle={handleGroupToggle}
                     />
                   </section>
                 </TabsContent>
