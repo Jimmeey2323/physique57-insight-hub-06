@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +13,8 @@ interface SalesInteractiveChartsProps {
 }
 
 export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ data, filters }) => {
+  console.log('SalesInteractiveCharts render - data length:', data?.length, 'filters:', filters);
+  
   const [timeRange, setTimeRange] = useState<'3m' | '6m' | '12m' | 'ytd'>('6m');
   const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
   const [productMetric, setProductMetric] = useState<'revenue' | 'volume'>('revenue');
@@ -40,7 +41,12 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
 
   // Filter data based on time range - memoize with stable dependencies
   const filteredData = useMemo(() => {
-    if (!Array.isArray(data) || data.length === 0) return [];
+    console.log('filteredData useMemo running - timeRange:', timeRange, 'data length:', data?.length);
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('filteredData: returning empty array');
+      return [];
+    }
     
     const now = new Date();
     let startDate: Date;
@@ -62,16 +68,24 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
     }
     
-    return data.filter(item => {
+    const result = data.filter(item => {
       const itemDate = parseDate(item.paymentDate);
       if (!itemDate) return false;
       return itemDate >= startDate && itemDate <= now;
     });
-  }, [data, timeRange]);
+    
+    console.log('filteredData result length:', result.length);
+    return result;
+  }, [data, timeRange, parseDate]);
 
   // Monthly revenue trend
   const monthlyRevenue = useMemo(() => {
-    if (!filteredData.length) return [];
+    console.log('monthlyRevenue useMemo running - filteredData length:', filteredData?.length);
+    
+    if (!filteredData.length) {
+      console.log('monthlyRevenue: returning empty array');
+      return [];
+    }
     
     const monthlyData: Record<string, number> = {};
     
@@ -83,18 +97,26 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       }
     });
 
-    return Object.entries(monthlyData)
+    const result = Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, revenue]) => ({
         month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         revenue: revenue,
         formattedRevenue: formatCurrency(revenue)
       }));
-  }, [filteredData]);
+    
+    console.log('monthlyRevenue result length:', result.length);
+    return result;
+  }, [filteredData, parseDate]);
 
   // Top 10 products by revenue or volume
   const topProducts = useMemo(() => {
-    if (!filteredData.length) return [];
+    console.log('topProducts useMemo running - filteredData length:', filteredData?.length, 'productMetric:', productMetric);
+    
+    if (!filteredData.length) {
+      console.log('topProducts: returning empty array');
+      return [];
+    }
     
     const productData: Record<string, { revenue: number; volume: number }> = {};
     
@@ -110,7 +132,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     });
 
     const sortKey = productMetric === 'revenue' ? 'revenue' : 'volume';
-    return Object.entries(productData)
+    const result = Object.entries(productData)
       .filter(([, data]) => data[sortKey] > 0)
       .sort(([, a], [, b]) => b[sortKey] - a[sortKey])
       .slice(0, 10)
@@ -122,11 +144,19 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         value: data[sortKey],
         formattedValue: productMetric === 'revenue' ? formatCurrency(data.revenue) : formatNumber(data.volume)
       }));
+    
+    console.log('topProducts result length:', result.length);
+    return result;
   }, [filteredData, productMetric]);
 
   // Category distribution
   const categoryDistribution = useMemo(() => {
-    if (!filteredData.length) return [];
+    console.log('categoryDistribution useMemo running - filteredData length:', filteredData?.length);
+    
+    if (!filteredData.length) {
+      console.log('categoryDistribution: returning empty array');
+      return [];
+    }
     
     const categoryData: Record<string, number> = {};
     
@@ -137,7 +167,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       }
     });
 
-    return Object.entries(categoryData)
+    const result = Object.entries(categoryData)
       .filter(([, revenue]) => revenue > 0)
       .sort(([, a], [, b]) => b - a)
       .map(([category, revenue]) => ({
@@ -145,20 +175,26 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         revenue,
         formattedRevenue: formatCurrency(revenue)
       }));
+    
+    console.log('categoryDistribution result length:', result.length);
+    return result;
   }, [filteredData]);
 
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
 
   // Stable callback functions to prevent re-renders
   const handleTimeRangeChange = useCallback((range: '3m' | '6m' | '12m' | 'ytd') => {
+    console.log('handleTimeRangeChange called with:', range);
     setTimeRange(range);
   }, []);
 
   const handleChartTypeChange = useCallback((type: 'bar' | 'line' | 'pie') => {
+    console.log('handleChartTypeChange called with:', type);
     setChartType(type);
   }, []);
 
   const handleProductMetricChange = useCallback((metric: 'revenue' | 'volume') => {
+    console.log('handleProductMetricChange called with:', metric);
     setProductMetric(metric);
   }, []);
 
