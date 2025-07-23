@@ -1,41 +1,32 @@
-
-import React, { useMemo, useState } from 'react';
-import { SalesData, FilterOptions, YearOnYearMetricType } from '@/types/dashboard';
+import React, { useMemo, useState, useCallback } from 'react';
+import { SalesData, YearOnYearMetricType } from '@/types/dashboard';
 import { YearOnYearMetricTabs } from './YearOnYearMetricTabs';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
-import { Calendar, TrendingUp, TrendingDown, Star, Edit3, Save, X } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, Edit3, Save, X, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
 interface MonthOnMonthTableProps {
   data: SalesData[];
-  filters?: FilterOptions;
   onRowClick: (row: any) => void;
-  collapsedGroups: Set<string>;
-  onGroupToggle: (groupKey: string) => void;
   selectedMetric?: YearOnYearMetricType;
 }
 
 export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
   data,
-  filters = {
-    dateRange: { start: '', end: '' },
-    location: [],
-    category: [],
-    product: [],
-    soldBy: [],
-    paymentMethod: []
-  },
   onRowClick,
-  collapsedGroups,
-  onGroupToggle,
   selectedMetric: initialMetric = 'revenue'
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<YearOnYearMetricType>(initialMetric);
   const [isEditingSummary, setIsEditingSummary] = useState(false);
-  const [summaryText, setSummaryText] = useState('• Month-on-month analysis shows seasonal patterns\n• Strong performance in peak months with growth opportunities identified\n• Consistent upward trend in key metrics');
+  const [summaryText, setSummaryText] = useState('• Strong performance in key product categories\n• Seasonal trends visible across different product lines\n• Growth opportunities identified in emerging categories');
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState('grossRevenue');
 
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
@@ -44,34 +35,27 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
       const [, day, month, year] = ddmmyyyy;
       return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? null : date;
+    return null;
   };
 
   const getMetricValue = (items: SalesData[], metric: YearOnYearMetricType) => {
     if (!items.length) return 0;
-    const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
-    const totalTransactions = items.length;
-    const uniqueMembers = new Set(items.map(item => item.memberId)).size;
-    const totalUnits = items.length;
-    
     switch (metric) {
       case 'revenue':
-        return totalRevenue;
+        return items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
       case 'transactions':
-        return totalTransactions;
+        return items.length;
       case 'members':
-        return uniqueMembers;
+        return new Set(items.map(item => item.memberId)).size;
+      case 'units':
+        return items.length;
       case 'atv':
-        return totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+        const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
+        return items.length > 0 ? totalRevenue / items.length : 0;
       case 'auv':
-        return totalUnits > 0 ? totalRevenue / totalUnits : 0;
-      case 'asv':
-        return uniqueMembers > 0 ? totalRevenue / uniqueMembers : 0;
-      case 'upt':
-        return totalTransactions > 0 ? totalUnits / totalTransactions : 0;
-      case 'vat':
-        return items.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
+        const revenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
+        const units = items.length;
+        return units > 0 ? revenue / units : 0;
       default:
         return 0;
     }
@@ -82,26 +66,20 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
       case 'revenue':
       case 'auv':
       case 'atv':
-      case 'asv':
-      case 'vat':
         return formatCurrency(value);
       case 'transactions':
       case 'members':
+      case 'units':
         return formatNumber(value);
-      case 'upt':
-        return value.toFixed(2);
       default:
         return formatNumber(value);
     }
   };
 
-  // Generate monthly data from Jun 2025 to Jan 2024 (current date backwards)
   const monthlyData = useMemo(() => {
     const months = [];
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    // Start from Jun 2025 and go backwards to Jan 2024
-    // 2025 months (Jun to Jan) - descending
     for (let i = 5; i >= 0; i--) {
       const monthName = monthNames[i];
       const monthNum = i + 1;
@@ -114,7 +92,6 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
       });
     }
     
-    // 2024 months (Dec to Jan) - descending
     for (let i = 11; i >= 0; i--) {
       const monthName = monthNames[i];
       const monthNum = i + 1;
@@ -131,9 +108,8 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
   }, []);
 
   const processedData = useMemo(() => {
-    // Group by unique products
     const productGroups = data.reduce((acc: Record<string, SalesData[]>, item) => {
-      const product = item.cleanedProduct || 'Unspecified';
+      const product = item.cleanedProduct || 'Unknown';
       if (!acc[product]) {
         acc[product] = [];
       }
@@ -142,116 +118,173 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
     }, {});
 
     const productData = Object.entries(productGroups).map(([product, items]) => {
-      const monthlyValues: Record<string, number> = {};
+      const monthlyValues: Record<string, any> = {};
 
       monthlyData.forEach(({ key, year, month }) => {
         const monthItems = items.filter(item => {
           const itemDate = parseDate(item.paymentDate);
           return itemDate && itemDate.getFullYear() === year && itemDate.getMonth() + 1 === month;
         });
-        monthlyValues[key] = getMetricValue(monthItems, selectedMetric);
+        
+        const grossRevenue = monthItems.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
+        const vat = monthItems.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
+        const transactions = monthItems.length;
+        const uniqueMembers = new Set(monthItems.map(item => item.memberId)).size;
+        const units = monthItems.length;
+
+        const monthName = new Date(year, month - 1).toLocaleDateString('en-IN', {
+          month: 'short',
+          year: '2-digit'
+        });
+
+        monthlyValues[`${monthName}_grossRevenue`] = grossRevenue;
+        monthlyValues[`${monthName}_vat`] = vat;
+        monthlyValues[`${monthName}_netRevenue`] = grossRevenue - vat;
+        monthlyValues[`${monthName}_transactions`] = transactions;
+        monthlyValues[`${monthName}_uniqueMembers`] = uniqueMembers;
+        monthlyValues[`${monthName}_units`] = units;
+        monthlyValues[`${monthName}_atv`] = transactions > 0 ? Math.round(grossRevenue / transactions) : 0;
+        monthlyValues[`${monthName}_auv`] = units > 0 ? Math.round(grossRevenue / units) : 0;
+        monthlyValues[`${monthName}_asv`] = uniqueMembers > 0 ? Math.round(grossRevenue / uniqueMembers) : 0;
+        monthlyValues[`${monthName}_upt`] = transactions > 0 ? (units / transactions).toFixed(1) : '0.0';
+        monthlyValues[`${monthName}_rawData`] = monthItems;
       });
 
-      const metricValue = getMetricValue(items, selectedMetric);
       const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
       const totalTransactions = items.length;
       const uniqueMembers = new Set(items.map(item => item.memberId)).size;
-      const totalVAT = items.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
-      const units = items.length; // Each sale item is one unit
-      
-      // Calculate correct metrics
-      const asv = uniqueMembers > 0 ? totalRevenue / uniqueMembers : 0; // ASV = Revenue/Members
-      const upt = totalTransactions > 0 ? units / totalTransactions : 0; // UPT = Units/Transactions
-      const atv = totalTransactions > 0 ? totalRevenue / totalTransactions : 0; // ATV = Revenue/Transactions
-      const auv = units > 0 ? totalRevenue / units : 0; // AUV = Revenue/Units
+      const totalUnits = items.length;
       
       return {
-        product,
-        metricValue,
+        name: product,
+        category: items[0]?.cleanedCategory || 'Unknown',
         totalRevenue,
         totalTransactions,
         uniqueMembers,
-        totalVAT,
-        asv,
-        upt,
-        atv,
-        auv,
-        units,
-        monthlyValues,
+        totalUnits,
+        ...monthlyValues,
         rawData: items
       };
     });
 
-    return productData.sort((a, b) => b.metricValue - a.metricValue);
-  }, [data, selectedMetric, monthlyData]);
+    return productData.sort((a, b) => b.totalRevenue - a.totalRevenue);
+  }, [data, monthlyData]);
 
-  const getGrowthIndicator = (current: number, previous: number) => {
-    if (previous === 0 && current === 0) return null;
-    if (previous === 0) return <TrendingUp className="w-3 h-3 text-green-500 inline ml-1" />;
-    const growth = ((current - previous) / previous) * 100;
-    if (growth > 5) {
-      return <TrendingUp className="w-3 h-3 text-green-500 inline ml-1" />;
-    } else if (growth < -5) {
-      return <TrendingDown className="w-3 h-3 text-red-500 inline ml-1" />;
-    }
-    return null;
-  };
+  // Group by category
+  const groupedData = useMemo(() => {
+    const groups = processedData.reduce((acc, item) => {
+      const category = item.category || 'Unknown';
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(item);
+      return acc;
+    }, {} as Record<string, any[]>);
+    return groups;
+  }, [processedData]);
 
-  // Calculate totals row with proper averages for ATV, ASV, AUV
-  const totalsRow = useMemo(() => {
-    const monthlyTotals: Record<string, number> = {};
-    monthlyData.forEach(({ key }) => {
-      monthlyTotals[key] = processedData.reduce((sum, item) => sum + (item.monthlyValues[key] || 0), 0);
+  // Get unique month-years for headers (in descending order)
+  const monthYears = useMemo(() => {
+    const monthsSet = new Set(data.map(item => {
+      const date = parseDate(item.paymentDate);
+      if (!date) return null;
+      return new Date(date.getFullYear(), date.getMonth()).toLocaleDateString('en-IN', {
+        month: 'short',
+        year: '2-digit'
+      });
+    }).filter(Boolean));
+    const months = Array.from(monthsSet) as string[];
+    months.sort((a, b) => {
+      const dateA = new Date(parseInt('20' + a.split(' ')[1]), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(a.split(' ')[0]));
+      const dateB = new Date(parseInt('20' + b.split(' ')[1]), ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(b.split(' ')[0]));
+      return dateB.getTime() - dateA.getTime();
+    });
+    return months;
+  }, [data]);
+
+  // Group months into quarters
+  const quarterGroups = useMemo(() => {
+    const quarters: Record<string, string[]> = {};
+    monthYears.forEach(month => {
+      const [monthName, year] = month.split(' ');
+      const quarterMap: Record<string, string> = {
+        'Jan': 'Q1', 'Feb': 'Q1', 'Mar': 'Q1',
+        'Apr': 'Q2', 'May': 'Q2', 'Jun': 'Q2',
+        'Jul': 'Q3', 'Aug': 'Q3', 'Sep': 'Q3',
+        'Oct': 'Q4', 'Nov': 'Q4', 'Dec': 'Q4'
+      };
+      const quarter = `${quarterMap[monthName]} ${year}`;
+      if (!quarters[quarter]) quarters[quarter] = [];
+      quarters[quarter].push(month);
+    });
+    return quarters;
+  }, [monthYears]);
+
+  // Calculate totals
+  const totals = useMemo(() => {
+    const monthTotals: any = {};
+    monthYears.forEach(month => {
+      monthTotals[`${month}_grossRevenue`] = 0;
+      monthTotals[`${month}_netRevenue`] = 0;
+      monthTotals[`${month}_vat`] = 0;
+      monthTotals[`${month}_transactions`] = 0;
+      monthTotals[`${month}_uniqueMembers`] = 0;
+      monthTotals[`${month}_units`] = 0;
     });
     
-    const totalRevenue = processedData.reduce((sum, item) => sum + item.totalRevenue, 0);
-    const totalTransactions = processedData.reduce((sum, item) => sum + item.totalTransactions, 0);
-    const totalMembers = new Set(data.map(item => item.memberId)).size;
-    const totalVAT = processedData.reduce((sum, item) => sum + item.totalVAT, 0);
-    const totalUnits = processedData.reduce((sum, item) => sum + item.units, 0);
+    processedData.forEach(item => {
+      monthYears.forEach(month => {
+        monthTotals[`${month}_grossRevenue`] += item[`${month}_grossRevenue`] || 0;
+        monthTotals[`${month}_netRevenue`] += item[`${month}_netRevenue`] || 0;
+        monthTotals[`${month}_vat`] += item[`${month}_vat`] || 0;
+        monthTotals[`${month}_transactions`] += item[`${month}_transactions`] || 0;
+        monthTotals[`${month}_uniqueMembers`] += item[`${month}_uniqueMembers`] || 0;
+        monthTotals[`${month}_units`] += item[`${month}_units`] || 0;
+      });
+    });
     
-    // Calculate averages for ATV, ASV, AUV (weighted averages)
-    const avgAsv = totalMembers > 0 ? totalRevenue / totalMembers : 0;
-    const avgUpt = totalTransactions > 0 ? totalUnits / totalTransactions : 0;
-    const avgAtv = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-    const avgAuv = totalUnits > 0 ? totalRevenue / totalUnits : 0;
-    
-    return {
-      product: 'TOTAL',
-      metricValue: getMetricValue(data, selectedMetric),
-      totalRevenue,
-      totalTransactions,
-      totalMembers,
-      totalVAT,
-      asv: avgAsv,
-      upt: avgUpt,
-      atv: avgAtv,
-      auv: avgAuv,
-      monthlyValues: monthlyTotals
-    };
-  }, [processedData, monthlyData, data, selectedMetric]);
+    return monthTotals;
+  }, [processedData, monthYears]);
+
+  const handleQuickFilter = useCallback((days: number) => {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - days);
+    console.log(`Quick filter applied: ${days} days from ${startDate.toDateString()} to ${endDate.toDateString()}`);
+  }, []);
+
+  const toggleGroupCollapse = (category: string) => {
+    const newCollapsed = new Set(collapsedGroups);
+    if (newCollapsed.has(category)) {
+      newCollapsed.delete(category);
+    } else {
+      newCollapsed.add(category);
+    }
+    setCollapsedGroups(newCollapsed);
+  };
 
   const saveSummary = () => {
     setIsEditingSummary(false);
-    localStorage.setItem('monthOnMonthSummary', summaryText);
+    localStorage.setItem('productMonthOnMonthSummary', summaryText);
   };
 
   const cancelEdit = () => {
     setIsEditingSummary(false);
-    const saved = localStorage.getItem('monthOnMonthSummary');
+    const saved = localStorage.getItem('productMonthOnMonthSummary');
     if (saved) setSummaryText(saved);
   };
 
-  // Group months by quarters and years
-  const groupedMonths = useMemo(() => {
-    const quarters: Record<string, typeof monthlyData> = {};
-    monthlyData.forEach(month => {
-      const quarterKey = `${month.year}-Q${month.quarter}`;
-      if (!quarters[quarterKey]) quarters[quarterKey] = [];
-      quarters[quarterKey].push(month);
-    });
-    return quarters;
-  }, [monthlyData]);
+  const handleRowClick = (row: any) => {
+    const enrichedRow = {
+      ...row,
+      transactionData: row.rawData || [],
+      monthlyTransactionData: monthYears.reduce((acc, month) => {
+        acc[month] = row[`${month}_rawData`] || [];
+        return acc;
+      }, {} as Record<string, any[]>)
+    };
+    onRowClick?.(enrichedRow);
+  };
 
   return (
     <Card className="bg-gradient-to-br from-white via-slate-50/30 to-white border-0 shadow-xl rounded-xl">
@@ -260,91 +293,169 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
           <div className="flex justify-between items-start">
             <div>
               <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-blue-600" />
+                <BarChart3 className="w-5 h-5 text-blue-600" />
                 Product Month-on-Month Analysis
               </CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Monthly performance metrics by product with quarterly grouping (Jun 2025 - Jan 2024)
+                Monthly performance metrics by product
               </p>
             </div>
+            
+            {/* Quick Filter Buttons */}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleQuickFilter(7)}>
+                Last 7 Days
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleQuickFilter(30)}>
+                Last 30 Days
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleQuickFilter(90)}>
+                Last 90 Days
+              </Button>
+            </div>
           </div>
-          
-          <YearOnYearMetricTabs value={selectedMetric} onValueChange={setSelectedMetric} className="w-full" />
         </div>
       </CardHeader>
 
       <CardContent className="p-0">
-        <div className="overflow-x-auto rounded-lg">
-          <table className="min-w-full bg-white border-t border-gray-200 rounded-lg">
-            <thead className="bg-gradient-to-r from-blue-700 to-blue-900 text-white font-semibold text-sm uppercase tracking-wider sticky top-0 z-20">
-              <tr>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-6 py-3 text-left rounded-tl-lg sticky left-0 bg-blue-800 z-30">Product</th>
-                {Object.entries(groupedMonths).map(([quarterKey, months]) => (
-                  <th key={quarterKey} colSpan={months.length} className="text-white font-semibold text-sm uppercase tracking-wider px-4 py-2 text-center border-l border-blue-600">
-                    {quarterKey}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {monthlyData.map(({ key, display }) => (
-                  <th key={key} className="text-white font-semibold text-xs uppercase tracking-wider px-3 py-2 bg-blue-800 border-l border-blue-600">
-                    <div className="flex flex-col">
-                      <span className="text-sm">{display.split(' ')[0]}</span>
-                      <span className="text-blue-200 text-xs">{display.split(' ')[1]}</span>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {processedData.map((product, index) => (
-                <tr 
-                  key={product.product} 
-                  className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" 
-                  onClick={() => onRowClick(product.rawData)}
-                >
-                  <td className="px-6 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white border-r border-gray-200 max-w-48">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-700">#{index + 1}</span>
-                      <span className="truncate">{product.product}</span>
-                    </div>
-                  </td>
-                  {monthlyData.map(({ key }, monthIndex) => {
-                    const current = product.monthlyValues[key] || 0;
-                    const previous = monthIndex > 0 ? product.monthlyValues[monthlyData[monthIndex - 1].key] || 0 : 0;
-                    return (
-                      <td key={key} className="px-3 py-3 text-center text-sm text-gray-900 font-mono border-l border-gray-100">
-                        <div className="flex items-center justify-center">
-                          {formatMetricValue(current, selectedMetric)}
-                          {getGrowthIndicator(current, previous)}
+        <div className="rounded-3xl border border-slate-200/30 bg-white shadow-2xl overflow-hidden">
+          {/* Tab Navigation */}
+          <div className="bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200/50 p-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-8 bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 p-2 rounded-2xl shadow-lg border border-slate-200/30">
+                <TabsTrigger value="grossRevenue" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  Gross Revenue
+                </TabsTrigger>
+                <TabsTrigger value="netRevenue" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  Net Revenue
+                </TabsTrigger>
+                <TabsTrigger value="transactions" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  Transactions
+                </TabsTrigger>
+                <TabsTrigger value="uniqueMembers" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  Members
+                </TabsTrigger>
+                <TabsTrigger value="units" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  Units
+                </TabsTrigger>
+                <TabsTrigger value="atv" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  ATV
+                </TabsTrigger>
+                <TabsTrigger value="auv" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  AUV
+                </TabsTrigger>
+                <TabsTrigger value="asv" className="text-xs font-bold transition-all duration-300 data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-xl">
+                  ASV
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-gradient-to-r from-blue-500 via-purple-600 to-blue-500 z-10 shadow-lg">
+                <TableRow className="border-0">
+                  <TableHead className="font-bold text-white text-sm sticky left-0 bg-gradient-to-r from-blue-500 to-purple-600 backdrop-blur-sm border-r border-white/20 min-w-[200px] shadow-lg">
+                    Product
+                  </TableHead>
+                  {Object.entries(quarterGroups).map(([quarter, months]) => (
+                    <TableHead key={quarter} colSpan={months.length} className="text-center font-bold text-white text-sm border-r border-white/20">
+                      {quarter}
+                    </TableHead>
+                  ))}
+                </TableRow>
+                <TableRow className="bg-gradient-to-r from-blue-400 via-purple-500 to-blue-400 border-0">
+                  <TableHead className="font-bold text-white text-sm sticky left-0 bg-gradient-to-r from-blue-400 to-purple-500 backdrop-blur-sm border-r border-white/20">
+                    &nbsp;
+                  </TableHead>
+                  {monthYears.map(month => (
+                    <TableHead key={month} className="text-center font-bold text-white text-sm min-w-[120px] border-r border-white/10">
+                      {month}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody className="bg-white">
+                {Object.entries(groupedData).map(([category, items]) => (
+                  <React.Fragment key={category}>
+                    <TableRow 
+                      className="bg-gradient-to-r from-slate-100/60 to-slate-200/60 font-bold border-b border-slate-300/50 cursor-pointer hover:from-slate-200/70 hover:to-slate-300/70 transition-all duration-300" 
+                      onClick={() => toggleGroupCollapse(category)}
+                    >
+                      <TableCell className="font-bold text-slate-800 sticky left-0 bg-gradient-to-r from-slate-100/90 to-slate-200/90 backdrop-blur-sm border-r border-slate-300/50 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <ChevronDown className={cn("w-4 h-4 transition-transform", collapsedGroups.has(category) && "rotate-180")} />
+                          {category} ({items.length} items)
                         </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              
-              {/* Totals Row */}
-              <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200 font-bold">
-                <td className="px-6 py-3 text-sm font-bold text-blue-900 sticky left-0 bg-blue-100 border-r border-blue-200">
-                  TOTAL
-                </td>
-                {monthlyData.map(({ key }) => (
-                  <td key={key} className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold border-l border-blue-200">
-                    {formatMetricValue(totalsRow.monthlyValues[key] || 0, selectedMetric)}
-                  </td>
+                      </TableCell>
+                      {monthYears.map(month => {
+                        const categoryTotal = items.reduce((sum, item) => sum + (item[`${month}_${activeTab}`] || 0), 0);
+                        return (
+                          <TableCell key={month} className="text-center font-bold text-blue-700 border-r border-slate-200/30 bg-gradient-to-r from-blue-50/50 to-purple-50/50">
+                            {activeTab.includes('Revenue') || activeTab === 'atv' || activeTab === 'auv' || activeTab === 'asv' ? 
+                              formatCurrency(categoryTotal) : 
+                              activeTab === 'upt' ? 
+                                (categoryTotal / items.length).toFixed(1) : 
+                                formatNumber(categoryTotal)
+                            }
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                    {!collapsedGroups.has(category) && items.map((row: any, index: number) => (
+                      <TableRow 
+                        key={`${category}-${index}`} 
+                        className="hover:bg-gradient-to-r hover:from-blue-50/30 hover:to-purple-50/30 cursor-pointer transition-all duration-300 border-b border-slate-200/20 bg-white" 
+                        onClick={() => handleRowClick(row)}
+                      >
+                        <TableCell className="font-semibold text-slate-800 sticky left-0 bg-white backdrop-blur-sm border-r border-slate-200/30 text-sm pl-8 shadow-sm">
+                          {row.name}
+                        </TableCell>
+                        {monthYears.map(month => (
+                          <TableCell key={month} className="text-center font-medium text-sm border-r border-slate-200/10">
+                            {activeTab === 'grossRevenue' && formatCurrency(row[`${month}_grossRevenue`] || 0)}
+                            {activeTab === 'netRevenue' && formatCurrency(row[`${month}_netRevenue`] || 0)}
+                            {activeTab === 'transactions' && formatNumber(row[`${month}_transactions`] || 0)}
+                            {activeTab === 'uniqueMembers' && formatNumber(row[`${month}_uniqueMembers`] || 0)}
+                            {activeTab === 'units' && formatNumber(row[`${month}_units`] || 0)}
+                            {activeTab === 'atv' && `₹${row[`${month}_atv`] || 0}`}
+                            {activeTab === 'auv' && `₹${row[`${month}_auv`] || 0}`}
+                            {activeTab === 'asv' && `₹${row[`${month}_asv`] || 0}`}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
                 ))}
-              </tr>
-            </tbody>
-          </table>
+              </TableBody>
+              <TableFooter className="sticky bottom-0 bg-gradient-to-r from-emerald-500 via-teal-600 to-emerald-500 shadow-lg">
+                <TableRow className="border-0">
+                  <TableCell className="font-bold text-white sticky left-0 bg-gradient-to-r from-emerald-500 to-teal-600 backdrop-blur-sm border-r border-white/20">
+                    GRAND TOTALS
+                  </TableCell>
+                  {monthYears.map(month => (
+                    <TableCell key={month} className="text-center font-bold text-white border-r border-white/10">
+                      {activeTab === 'grossRevenue' && formatCurrency(totals[`${month}_grossRevenue`] || 0)}
+                      {activeTab === 'netRevenue' && formatCurrency(totals[`${month}_netRevenue`] || 0)}
+                      {activeTab === 'transactions' && formatNumber(totals[`${month}_transactions`] || 0)}
+                      {activeTab === 'uniqueMembers' && formatNumber(totals[`${month}_uniqueMembers`] || 0)}
+                      {activeTab === 'units' && formatNumber(totals[`${month}_units`] || 0)}
+                      {(activeTab === 'atv' || activeTab === 'auv' || activeTab === 'asv') && '-'}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </div>
         </div>
 
         {/* Summary/Insights Section */}
         <div className="p-6 border-t border-gray-200 bg-gradient-to-r from-slate-50 to-white rounded-b-lg">
           <div className="flex justify-between items-center mb-4">
             <h4 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-blue-600" />
-              Product Month-on-Month Insights
+              <BarChart3 className="w-5 h-5 text-blue-600" />
+              Product Insights
             </h4>
             {!isEditingSummary ? (
               <Button variant="outline" size="sm" onClick={() => setIsEditingSummary(true)} className="gap-2">
@@ -369,7 +480,7 @@ export const MonthOnMonthTable: React.FC<MonthOnMonthTableProps> = ({
             <Textarea
               value={summaryText}
               onChange={(e) => setSummaryText(e.target.value)}
-              placeholder="Enter month-on-month insights using bullet points (• )"
+              placeholder="Enter product insights using bullet points (• )"
               className="min-h-32 text-sm"
             />
           ) : (
