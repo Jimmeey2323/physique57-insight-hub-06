@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +38,27 @@ const locations = [{
   fullName: 'Kenkere House'
 }];
 
+// Move parseDate outside component to make it stable
+const parseDate = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  
+  // Enhanced date parsing to handle multiple formats
+  const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  } else {
+    // Try other formats
+    const formats = [new Date(dateStr), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'))];
+    for (const date of formats) {
+      if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+        return date;
+      }
+    }
+  }
+  return null;
+};
+
 export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
   data
 }) => {
@@ -58,33 +78,8 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     paymentMethod: []
   });
 
-<<<<<<< HEAD
-  // Helper function to filter data by date range and other filters
-  const parseDate = (dateStr: string): Date | null => {
-    if (!dateStr) return null;
-    
-    // Enhanced date parsing to handle multiple formats
-    const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (ddmmyyyy) {
-      const [, day, month, year] = ddmmyyyy;
-      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    } else {
-      // Try other formats
-      const formats = [new Date(dateStr), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'))];
-      for (const date of formats) {
-        if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
-          return date;
-        }
-      }
-    }
-    return null;
-  };
-
-  const applyFilters = (rawData: SalesData[], includeHistoric: boolean = false) => {
-=======
   // Memoized filter function to prevent unnecessary recalculations
   const applyFilters = useCallback((rawData: SalesData[], includeHistoric: boolean = false) => {
->>>>>>> e9260ccb04067d4646ddae997647e716a8360f32
     let filtered = rawData;
 
     // Apply location filter first
