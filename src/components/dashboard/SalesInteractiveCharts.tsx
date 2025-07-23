@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -158,16 +158,16 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
 
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
 
-  // Use useCallback to prevent re-renders
-  const handleTimeRangeChange = React.useCallback((range: '3m' | '6m' | '12m' | 'ytd') => {
+  // Stable callback functions to prevent re-renders
+  const handleTimeRangeChange = useCallback((range: '3m' | '6m' | '12m' | 'ytd') => {
     setTimeRange(range);
   }, []);
 
-  const handleChartTypeChange = React.useCallback((type: 'bar' | 'line' | 'pie') => {
+  const handleChartTypeChange = useCallback((type: 'bar' | 'line' | 'pie') => {
     setChartType(type);
   }, []);
 
-  const handleProductMetricChange = React.useCallback((metric: 'revenue' | 'volume') => {
+  const handleProductMetricChange = useCallback((metric: 'revenue' | 'volume') => {
     setProductMetric(metric);
   }, []);
 
