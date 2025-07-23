@@ -1,6 +1,5 @@
 
-
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AutoCloseFilterSection } from './AutoCloseFilterSection';
@@ -40,27 +39,6 @@ const locations = [{
   fullName: 'Kenkere House'
 }];
 
-// Move parseDate outside component to make it stable
-const parseDate = (dateStr: string): Date | null => {
-  if (!dateStr) return null;
-  
-  // Enhanced date parsing to handle multiple formats
-  const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  } else {
-    // Try other formats
-    const formats = [new Date(dateStr), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')), new Date(dateStr.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'))];
-    for (const date of formats) {
-      if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
-        return date;
-      }
-    }
-  }
-  return null;
-};
-
 export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
   data
 }) => {
@@ -80,30 +58,41 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     paymentMethod: []
   });
 
-  // Direct filtering without useCallback to prevent circular dependencies
-  const filteredData = useMemo(() => {
-    console.log('Filtering data for current view...');
-    let filtered = data || [];
+  // Helper function to filter data by date range and other filters
+  const applyFilters = (rawData: SalesData[], includeHistoric: boolean = false) => {
+    let filtered = rawData;
 
     // Apply location filter first
     filtered = filtered.filter(item => {
-      const locationMatch = activeLocation === 'kwality' 
-        ? item.calculatedLocation === 'Kwality House, Kemps Corner' 
-        : activeLocation === 'supreme' 
-        ? item.calculatedLocation === 'Supreme HQ, Bandra' 
-        : item.calculatedLocation === 'Kenkere House';
+      const locationMatch = activeLocation === 'kwality' ? item.calculatedLocation === 'Kwality House, Kemps Corner' : activeLocation === 'supreme' ? item.calculatedLocation === 'Supreme HQ, Bandra' : item.calculatedLocation === 'Kenkere House';
       return locationMatch;
     });
 
-    // Apply date range filter
-    if (filters.dateRange.start || filters.dateRange.end) {
+    // Apply date range filter - skip for historic data when includeHistoric is true
+    if (!includeHistoric && (filters.dateRange.start || filters.dateRange.end)) {
       const startDate = filters.dateRange.start ? new Date(filters.dateRange.start) : null;
       const endDate = filters.dateRange.end ? new Date(filters.dateRange.end) : null;
       filtered = filtered.filter(item => {
         if (!item.paymentDate) return false;
 
-        let itemDate: Date | null = parseDate(item.paymentDate);
-        
+        // Enhanced date parsing to handle multiple formats
+        let itemDate: Date | null = null;
+
+        // Try DD/MM/YYYY format first
+        const ddmmyyyy = item.paymentDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (ddmmyyyy) {
+          const [, day, month, year] = ddmmyyyy;
+          itemDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        } else {
+          // Try other formats
+          const formats = [new Date(item.paymentDate), new Date(item.paymentDate.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')), new Date(item.paymentDate.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$2/$1/$3'))];
+          for (const date of formats) {
+            if (!isNaN(date.getTime()) && date.getFullYear() > 1900 && date.getFullYear() < 2100) {
+              itemDate = date;
+              break;
+            }
+          }
+        }
         if (!itemDate || isNaN(itemDate.getTime())) return false;
         if (startDate && itemDate < startDate) return false;
         if (endDate && itemDate > endDate) return false;
@@ -127,38 +116,15 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     if (filters.maxAmount) {
       filtered = filtered.filter(item => (item.paymentValue || 0) <= filters.maxAmount!);
     }
-    
-    console.log('Filtered data length:', filtered.length);
     return filtered;
-  }, [
-    data, 
-    activeLocation, 
-    filters.dateRange.start, 
-    filters.dateRange.end, 
-    filters.category, 
-    filters.paymentMethod, 
-    filters.soldBy, 
-    filters.minAmount, 
-    filters.maxAmount
-  ]);
+  };
 
-  // Historic data for year-on-year comparison (includes all historical data by location only)
-  const allHistoricData = useMemo(() => {
-    console.log('Filtering historic data...');
-    let filtered = data || [];
+  const filteredData = useMemo(() => applyFilters(data), [data, filters, activeLocation]);
+  const allHistoricData = useMemo(() => applyFilters(data, true), [data, activeLocation]);
 
-    // Apply location filter only for historic data
-    filtered = filtered.filter(item => {
-      const locationMatch = activeLocation === 'kwality' 
-        ? item.calculatedLocation === 'Kwality House, Kemps Corner' 
-        : activeLocation === 'supreme' 
-        ? item.calculatedLocation === 'Supreme HQ, Bandra' 
-        : item.calculatedLocation === 'Kenkere House';
-      return locationMatch;
-    });
-    
-    console.log('Historic data length:', filtered.length);
-    return filtered;
+  // Get historic data for year-on-year comparison (includes 2024 data)
+  const historicData = useMemo(() => {
+    return applyFilters(data, true);
   }, [data, activeLocation]);
 
   const handleRowClick = (rowData: any) => {
@@ -223,7 +189,7 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
               <SalesAnimatedMetricCards data={filteredData} />
 
               {/* Interactive Charts */}
-              <SalesInteractiveCharts data={allHistoricData} filters={filters} />
+              <SalesInteractiveCharts data={allHistoricData} />
 
               {/* Top/Bottom Performers */}
               <UnifiedTopBottomSellers data={filteredData} />
@@ -276,8 +242,6 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
                       data={allHistoricData}
                       onRowClick={handleRowClick}
                       selectedMetric={activeYoyMetric}
-                      collapsedGroups={collapsedGroups}
-                      onGroupToggle={handleGroupToggle}
                     />
                   </section>
                 </TabsContent>
@@ -358,4 +322,3 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
 };
 
 export default SalesAnalyticsSection;
-

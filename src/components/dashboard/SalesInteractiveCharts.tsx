@@ -1,391 +1,422 @@
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, Calendar, Package, Users, DollarSign, Filter, BarChart3, PieChart as PieChartIcon } from 'lucide-react';
-import { SalesData, FilterOptions } from '@/types/dashboard';
+import { SalesData } from '@/types/dashboard';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, Area, AreaChart } from 'recharts';
+import { BarChart3, TrendingUp, PieChart as PieChartIcon, Activity, Filter } from 'lucide-react';
 
 interface SalesInteractiveChartsProps {
   data: SalesData[];
-  filters: FilterOptions;
 }
 
-// Move parseDate outside component to make it stable
-const parseDate = (dateStr: string): Date | null => {
-  if (!dateStr) return null;
-  
-  // Handle DD/MM/YYYY format
-  const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-  }
-  
-  // Handle DD/MM/YYYY HH:MM:SS format
-  const ddmmyyyyTime = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/);
-  if (ddmmyyyyTime) {
-    const [, day, month, year, hour, minute, second] = ddmmyyyyTime;
-    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
-  }
-  
-  return null;
-};
+interface MonthlyDataPoint {
+  month: string;
+  revenue: number;
+  transactions: number;
+  members: number;
+  vat: number;
+  atv: number;
+}
 
-export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ data, filters }) => {
-  console.log('SalesInteractiveCharts render - data length:', data?.length, 'filters:', filters);
-  
-  const [timeRange, setTimeRange] = useState<'3m' | '6m' | '12m' | 'ytd'>('6m');
-  const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
-  const [productMetric, setProductMetric] = useState<'revenue' | 'volume'>('revenue');
+interface CategoryDataPoint {
+  name: string;
+  value: number;
+  count: number;
+}
 
-  // Filter data based on time range - simplified dependencies
-  const filteredData = useMemo(() => {
-    console.log('filteredData useMemo running - timeRange:', timeRange, 'data length:', data?.length);
+interface ProductDataPoint {
+  name: string;
+  value: number;
+  count: number;
+}
+
+export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ data }) => {
+  const [activeChart, setActiveChart] = useState('revenue');
+  const [timeRange, setTimeRange] = useState('6months');
+  const [productMetric, setProductMetric] = useState('revenue');
+
+  const parseDate = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
     
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log('filteredData: returning empty array');
-      return [];
+    // Handle DD/MM/YYYY format
+    const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (ddmmyyyy) {
+      const [, day, month, year] = ddmmyyyy;
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
     
-    const now = new Date();
-    let startDate: Date;
-    
-    switch (timeRange) {
-      case '3m':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-        break;
-      case '6m':
-        startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-        break;
-      case '12m':
-        startDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        break;
-      case 'ytd':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      default:
-        startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+    // Handle DD/MM/YYYY HH:MM:SS format
+    const ddmmyyyyTime = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{2}:\d{2}:\d{2}$/);
+    if (ddmmyyyyTime) {
+      const [, day, month, year] = ddmmyyyyTime;
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
     
-    const result = data.filter(item => {
-      const itemDate = parseDate(item.paymentDate);
-      if (!itemDate) return false;
-      return itemDate >= startDate && itemDate <= now;
-    });
-    
-    console.log('filteredData result length:', result.length);
-    return result;
-  }, [data, timeRange]); // Removed parseDate from dependencies
+    // Fallback to standard Date parsing
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? null : date;
+  };
 
-  // Monthly revenue trend
-  const monthlyRevenue = useMemo(() => {
-    console.log('monthlyRevenue useMemo running - filteredData length:', filteredData?.length);
+  const monthlyData = useMemo((): MonthlyDataPoint[] => {
+    if (!data || data.length === 0) return [];
     
-    if (!filteredData.length) {
-      console.log('monthlyRevenue: returning empty array');
-      return [];
-    }
+    const months: Record<string, {
+      month: string;
+      revenue: number;
+      transactions: number;
+      members: Set<string>;
+      vat: number;
+    }> = {};
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     
-    const monthlyData: Record<string, number> = {};
-    
-    filteredData.forEach(item => {
+    data.forEach(item => {
       const date = parseDate(item.paymentDate);
-      if (date && item.paymentValue) {
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[monthKey] = (monthlyData[monthKey] || 0) + item.paymentValue;
-      }
-    });
-
-    const result = Object.entries(monthlyData)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, revenue]) => ({
-        month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        revenue: revenue,
-        formattedRevenue: formatCurrency(revenue)
-      }));
-    
-    console.log('monthlyRevenue result length:', result.length);
-    return result;
-  }, [filteredData]); // Removed parseDate from dependencies
-
-  // Top 10 products by revenue or volume
-  const topProducts = useMemo(() => {
-    console.log('topProducts useMemo running - filteredData length:', filteredData?.length, 'productMetric:', productMetric);
-    
-    if (!filteredData.length) {
-      console.log('topProducts: returning empty array');
-      return [];
-    }
-    
-    const productData: Record<string, { revenue: number; volume: number }> = {};
-    
-    filteredData.forEach(item => {
-      const product = item.cleanedProduct || item.paymentItem || 'Unknown';
-      if (product && product.trim()) {
-        if (!productData[product]) {
-          productData[product] = { revenue: 0, volume: 0 };
+      if (date && !isNaN(date.getTime())) {
+        const key = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+        if (!months[key]) {
+          months[key] = {
+            month: key,
+            revenue: 0,
+            transactions: 0,
+            members: new Set<string>(),
+            vat: 0
+          };
         }
-        productData[product].revenue += item.paymentValue || 0;
-        productData[product].volume += 1;
+        months[key].revenue += item.paymentValue || 0;
+        months[key].transactions += 1;
+        if (item.memberId) {
+          months[key].members.add(item.memberId);
+        }
+        months[key].vat += item.paymentVAT || 0;
       }
     });
 
-    const sortKey = productMetric === 'revenue' ? 'revenue' : 'volume';
-    const result = Object.entries(productData)
-      .filter(([, data]) => data[sortKey] > 0)
-      .sort(([, a], [, b]) => b[sortKey] - a[sortKey])
-      .slice(0, 10)
-      .map(([product, data]) => ({
-        product: product.length > 20 ? product.substring(0, 20) + '...' : product,
-        fullProduct: product,
-        revenue: data.revenue,
-        volume: data.volume,
-        value: data[sortKey],
-        formattedValue: productMetric === 'revenue' ? formatCurrency(data.revenue) : formatNumber(data.volume)
-      }));
-    
-    console.log('topProducts result length:', result.length);
-    return result;
-  }, [filteredData, productMetric]);
+    const result = Object.values(months).map(month => ({
+      month: month.month,
+      revenue: month.revenue,
+      transactions: month.transactions,
+      members: month.members.size,
+      vat: month.vat,
+      atv: month.transactions > 0 ? month.revenue / month.transactions : 0
+    })).sort((a, b) => {
+      // Sort by year and month
+      const [aMonth, aYear] = a.month.split(' ');
+      const [bMonth, bYear] = b.month.split(' ');
+      const aDate = new Date(parseInt(aYear), monthNames.indexOf(aMonth));
+      const bDate = new Date(parseInt(bYear), monthNames.indexOf(bMonth));
+      return aDate.getTime() - bDate.getTime();
+    });
 
-  // Category distribution
-  const categoryDistribution = useMemo(() => {
-    console.log('categoryDistribution useMemo running - filteredData length:', filteredData?.length);
-    
-    if (!filteredData.length) {
-      console.log('categoryDistribution: returning empty array');
-      return [];
+    // Apply time range filter
+    if (timeRange === '3months') {
+      return result.slice(-3);
+    } else if (timeRange === '6months') {
+      return result.slice(-6);
+    } else if (timeRange === 'year') {
+      return result.slice(-12);
     }
     
-    const categoryData: Record<string, number> = {};
-    
-    filteredData.forEach(item => {
-      const category = item.cleanedCategory || item.paymentCategory || 'Unknown';
-      if (category && category.trim() && item.paymentValue) {
-        categoryData[category] = (categoryData[category] || 0) + item.paymentValue;
-      }
-    });
-
-    const result = Object.entries(categoryData)
-      .filter(([, revenue]) => revenue > 0)
-      .sort(([, a], [, b]) => b - a)
-      .map(([category, revenue]) => ({
-        category,
-        revenue,
-        formattedRevenue: formatCurrency(revenue)
-      }));
-    
-    console.log('categoryDistribution result length:', result.length);
     return result;
-  }, [filteredData]);
+  }, [data, timeRange]);
 
-  const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
+  const categoryData = useMemo((): CategoryDataPoint[] => {
+    if (!data || data.length === 0) return [];
+    
+    const categories: Record<string, CategoryDataPoint> = {};
+    data.forEach(item => {
+      const category = item.cleanedCategory || 'Uncategorized';
+      if (!categories[category]) {
+        categories[category] = { name: category, value: 0, count: 0 };
+      }
+      categories[category].value += item.paymentValue || 0;
+      categories[category].count += 1;
+    });
+    return Object.values(categories).sort((a, b) => b.value - a.value);
+  }, [data]);
 
-  // Stable callback functions to prevent re-renders
-  const handleTimeRangeChange = useCallback((range: '3m' | '6m' | '12m' | 'ytd') => {
-    console.log('handleTimeRangeChange called with:', range);
-    setTimeRange(range);
-  }, []);
+  const productData = useMemo((): ProductDataPoint[] => {
+    if (!data || data.length === 0) return [];
+    
+    const products: Record<string, ProductDataPoint> = {};
+    data.forEach(item => {
+      const product = item.cleanedProduct || 'Uncategorized';
+      if (!products[product]) {
+        products[product] = { name: product, value: 0, count: 0 };
+      }
+      products[product].value += item.paymentValue || 0;
+      products[product].count += 1;
+    });
+    return Object.values(products).sort((a, b) => b.value - a.value).slice(0, 10);
+  }, [data]);
 
-  const handleChartTypeChange = useCallback((type: 'bar' | 'line' | 'pie') => {
-    console.log('handleChartTypeChange called with:', type);
-    setChartType(type);
-  }, []);
+  const COLORS = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#06B6D4', '#EC4899', '#84CC16'];
 
-  const handleProductMetricChange = useCallback((metric: 'revenue' | 'volume') => {
-    console.log('handleProductMetricChange called with:', metric);
-    setProductMetric(metric);
-  }, []);
+  const formatTooltipValue = (value: any): string => {
+    if (typeof value === 'number') {
+      return formatCurrency(value);
+    }
+    return String(value);
+  };
+
+  const formatTooltipNumber = (value: any): string => {
+    if (typeof value === 'number') {
+      return formatNumber(value);
+    }
+    return String(value);
+  };
+
+  const handleTimeRangeChange = (newRange: string) => {
+    console.log('Time range changed to:', newRange);
+    setTimeRange(newRange);
+  };
+
+  const handleChartChange = (newChart: string) => {
+    console.log('Chart changed to:', newChart);
+    setActiveChart(newChart);
+  };
+
+  const handleProductMetricChange = (newMetric: string) => {
+    console.log('Product metric changed to:', newMetric);
+    setProductMetric(newMetric);
+  };
+
+  // Show loading state or empty state if no data
+  if (!data || data.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-white/80 backdrop-blur-sm shadow-lg border-0">
+          <CardContent className="p-8 text-center">
+            <div className="text-gray-500">
+              <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No sales data available</p>
+              <p className="text-sm">Data will appear here once sales information is loaded</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Monthly Revenue Trend */}
-      <Card className="bg-gradient-to-br from-blue-50 to-indigo-100">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg font-bold text-blue-800 flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
-              Monthly Revenue Trend
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant={timeRange === '3m' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => handleTimeRangeChange('3m')}
-              >
-                3M
-              </Button>
-              <Button
-                variant={timeRange === '6m' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => handleTimeRangeChange('6m')}
-              >
-                6M
-              </Button>
-              <Button
-                variant={timeRange === '12m' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => handleTimeRangeChange('12m')}
-              >
-                12M
-              </Button>
-              <Button
-                variant={timeRange === 'ytd' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => handleTimeRangeChange('ytd')}
-              >
-                YTD
-              </Button>
+    <div className="space-y-6">
+      {/* First Row - Two Small Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Category Performance */}
+        <Card className="bg-white/80 backdrop-blur-sm shadow-lg border-0">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <PieChartIcon className="w-5 h-5 text-purple-600" />
+                Category Revenue Distribution
+              </CardTitle>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => console.log('Filter clicked')}>
+                  <Filter className="w-4 h-4 mr-1" />
+                  Filter
+                </Button>
+              </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              {chartType === 'line' ? (
-                <LineChart data={monthlyRevenue}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(value) => formatCurrency(value)} />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Line type="monotone" dataKey="revenue" stroke="#8884d8" strokeWidth={2} />
-                </LineChart>
-              ) : (
-                <BarChart data={monthlyRevenue}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(value) => formatCurrency(value)} />
-                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                  <Bar dataKey="revenue" fill="#8884d8" />
-                </BarChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-          <div className="flex justify-center mt-4 gap-2">
-            <Button
-              variant={chartType === 'bar' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleChartTypeChange('bar')}
-            >
-              <BarChart3 className="w-4 h-4 mr-1" />
-              Bar
-            </Button>
-            <Button
-              variant={chartType === 'line' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleChartTypeChange('line')}
-            >
-              <TrendingUp className="w-4 h-4 mr-1" />
-              Line
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent>
+            {categoryData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatTooltipValue(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-gray-500">
+                <p>No category data available</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Top 10 Products */}
-      <Card className="bg-gradient-to-br from-green-50 to-emerald-100">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg font-bold text-green-800 flex items-center gap-2">
-              <Package className="w-5 h-5" />
-              Top 10 Products
-            </CardTitle>
-            <div className="flex gap-2">
+        {/* Top Products Performance */}
+        <Card className="bg-white/80 backdrop-blur-sm shadow-lg border-0">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-green-600" />
+                Top 10 Products by {productMetric === 'revenue' ? 'Revenue' : 'Volume'}
+              </CardTitle>
+              <div className="flex gap-2">
+                <Button 
+                  variant={productMetric === 'revenue' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => handleProductMetricChange('revenue')}
+                >
+                  Revenue
+                </Button>
+                <Button 
+                  variant={productMetric === 'volume' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => handleProductMetricChange('volume')}
+                >
+                  Volume
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {productData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={productData} layout="horizontal">
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis 
+                    type="number" 
+                    tickFormatter={productMetric === 'revenue' ? formatTooltipValue : formatTooltipNumber} 
+                    className="text-xs" 
+                  />
+                  <YAxis dataKey="name" type="category" width={120} className="text-xs" />
+                  <Tooltip 
+                    formatter={(value) => productMetric === 'revenue' ? formatTooltipValue(value) : formatTooltipNumber(value)}
+                    labelClassName="text-sm font-medium"
+                    contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  />
+                  <Bar 
+                    dataKey={productMetric === 'revenue' ? 'value' : 'count'} 
+                    fill="#10B981" 
+                    radius={[0, 4, 4, 0]} 
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-gray-500">
+                <p>No product data available</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Second Row - Full Width Chart */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Monthly Revenue Trend */}
+        <Card className="bg-white/80 backdrop-blur-sm shadow-lg border-0">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-blue-600" />
+                Monthly Revenue & Performance Trends
+              </CardTitle>
+              <div className="flex gap-2">
+                <Button
+                  variant={timeRange === '3months' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleTimeRangeChange('3months')}
+                >
+                  3M
+                </Button>
+                <Button
+                  variant={timeRange === '6months' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleTimeRangeChange('6months')}
+                >
+                  6M
+                </Button>
+                <Button
+                  variant={timeRange === 'year' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleTimeRangeChange('year')}
+                >
+                  1Y
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-1 mb-4">
               <Button
-                variant={productMetric === 'revenue' ? 'default' : 'outline'}
+                variant={activeChart === 'revenue' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => handleProductMetricChange('revenue')}
+                onClick={() => handleChartChange('revenue')}
               >
-                <DollarSign className="w-4 h-4 mr-1" />
                 Revenue
               </Button>
               <Button
-                variant={productMetric === 'volume' ? 'default' : 'outline'}
+                variant={activeChart === 'transactions' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => handleProductMetricChange('volume')}
+                onClick={() => handleChartChange('transactions')}
               >
-                <Users className="w-4 h-4 mr-1" />
-                Volume
+                Transactions
+              </Button>
+              <Button
+                variant={activeChart === 'members' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleChartChange('members')}
+              >
+                Members
               </Button>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topProducts} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  type="number" 
-                  tickFormatter={(value) => 
-                    productMetric === 'revenue' ? formatCurrency(value) : formatNumber(value)
-                  } 
-                />
-                <YAxis type="category" dataKey="product" width={100} />
-                <Tooltip 
-                  formatter={(value) => 
-                    productMetric === 'revenue' ? formatCurrency(Number(value)) : formatNumber(Number(value))
-                  } 
-                />
-                <Bar dataKey="value" fill="#82ca9d" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          {topProducts.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Package className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No product data available for the selected time range</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Category Distribution */}
-      <Card className="bg-gradient-to-br from-purple-50 to-violet-100 lg:col-span-2">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-lg font-bold text-purple-800 flex items-center gap-2">
-              <PieChartIcon className="w-5 h-5" />
-              Category Distribution
-            </CardTitle>
-            <Badge variant="outline" className="text-purple-700">
-              {categoryDistribution.length} Categories
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ category, percent }) => `${category} (${(percent * 100).toFixed(0)}%)`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="revenue"
-                >
-                  {categoryDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          {categoryDistribution.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Filter className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No category data available for the selected time range</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+            {monthlyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                {activeChart === 'revenue' ? (
+                  <AreaChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipValue} className="text-xs" />
+                    <Tooltip 
+                      formatter={(value) => [formatTooltipValue(value), 'Revenue']}
+                      labelClassName="text-sm font-medium"
+                      contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="revenue" 
+                      stroke="#3B82F6" 
+                      fill="url(#colorRevenue)" 
+                      strokeWidth={2}
+                    />
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                  </AreaChart>
+                ) : activeChart === 'transactions' ? (
+                  <LineChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
+                    <Tooltip formatter={(value) => formatTooltipNumber(value)} />
+                    <Line type="monotone" dataKey="transactions" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }} />
+                  </LineChart>
+                ) : (
+                  <LineChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
+                    <Tooltip formatter={(value) => formatTooltipNumber(value)} />
+                    <Line type="monotone" dataKey="members" stroke="#10B981" strokeWidth={3} dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }} />
+                  </LineChart>
+                )}
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[350px] flex items-center justify-center text-gray-500">
+                <p>No monthly data available</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };
