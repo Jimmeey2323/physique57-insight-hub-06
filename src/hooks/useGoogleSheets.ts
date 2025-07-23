@@ -9,7 +9,7 @@ const GOOGLE_CONFIG = {
   TOKEN_URL: "https://oauth2.googleapis.com/token"
 };
 
-const SPREADSHEET_ID = "1ms082PTG8lt566ndWBf687baIl-knERPL1r2v7-dPxg";
+const SPREADSHEET_ID = "1GY78saGWgQLnuHeM3zwG01ahZ_2t0Y-WhNS2sz0PK4Q";
 
 export const useGoogleSheets = () => {
   const [data, setData] = useState<SalesData[]>([]);
