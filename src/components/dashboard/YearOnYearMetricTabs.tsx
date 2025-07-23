@@ -16,7 +16,7 @@ export const YearOnYearMetricTabs: React.FC<YearOnYearMetricTabsProps> = ({
 }) => {
   return (
     <Tabs value={value} onValueChange={onValueChange} className={className}>
-      <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8 bg-white border border-gray-200 p-1 rounded-xl shadow-sm h-auto">
+      <TabsList className="grid w-full grid-cols-5 lg:grid-cols-9 bg-white border border-gray-200 p-1 rounded-xl shadow-sm h-auto">
         <TabsTrigger
           value="revenue"
           className="text-xs px-2 py-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
@@ -34,6 +34,12 @@ export const YearOnYearMetricTabs: React.FC<YearOnYearMetricTabsProps> = ({
           className="text-xs px-2 py-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
         >
           Members
+        </TabsTrigger>
+        <TabsTrigger
+          value="units"
+          className="text-xs px-2 py-2 data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+        >
+          Units
         </TabsTrigger>
         <TabsTrigger
           value="atv"

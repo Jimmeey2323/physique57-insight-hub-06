@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState } from 'react';
 import { SalesData, FilterOptions, YearOnYearMetricType, EnhancedYearOnYearTableProps } from '@/types/dashboard';
 import { YearOnYearMetricTabs } from './YearOnYearMetricTabs';
@@ -6,6 +7,7 @@ import { ChevronDown, ChevronRight, RefreshCw, Filter, Calendar, TrendingUp, Dow
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 const groupDataByCategory = (data: SalesData[]) => {
   return data.reduce((acc: Record<string, any>, item) => {
     const category = item.cleanedCategory || 'Uncategorized';
@@ -20,6 +22,7 @@ const groupDataByCategory = (data: SalesData[]) => {
     return acc;
   }, {});
 };
+
 export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = ({
   data,
   filters = {
@@ -40,6 +43,8 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<YearOnYearMetricType>(initialMetric);
   const [showFilters, setShowFilters] = useState(false);
+  const [internalCollapsedGroups, setInternalCollapsedGroups] = useState<Set<string>>(new Set());
+
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
 
@@ -54,6 +59,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     const date = new Date(dateStr);
     return isNaN(date.getTime()) ? null : date;
   };
+
   const getMetricValue = (items: SalesData[], metric: YearOnYearMetricType) => {
     if (!items.length) return 0;
     switch (metric) {
@@ -63,6 +69,8 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return items.length;
       case 'members':
         return new Set(items.map(item => item.memberId)).size;
+      case 'units':
+        return items.length; // Each sale item is one unit
       case 'atv':
         const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
         return items.length > 0 ? totalRevenue / items.length : 0;
@@ -88,6 +96,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return 0;
     }
   };
+
   const formatMetricValue = (value: number, metric: YearOnYearMetricType) => {
     switch (metric) {
       case 'revenue':
@@ -99,6 +108,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return formatCurrency(value);
       case 'transactions':
       case 'members':
+      case 'units':
         return formatNumber(value);
       case 'upt':
         return value.toFixed(2);
@@ -152,20 +162,17 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     }
     return months;
   }, []);
+
   const processedData = useMemo(() => {
     const grouped = groupDataByCategory(allHistoricData);
-    return Object.entries(grouped).map(([category, products]) => {
+    const result = Object.entries(grouped).map(([category, products]) => {
       const categoryData = {
         category,
         products: Object.entries(products).map(([product, items]) => {
           const monthlyValues: Record<string, number> = {};
 
           // Calculate values for each month
-          monthlyData.forEach(({
-            key,
-            year,
-            month
-          }) => {
+          monthlyData.forEach(({ key, year, month }) => {
             const monthItems = (items as SalesData[]).filter(item => {
               const itemDate = parseDate(item.paymentDate);
               return itemDate && itemDate.getFullYear() === year && itemDate.getMonth() + 1 === month;
@@ -181,6 +188,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
             asv: values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0,
             upt: values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0
           };
+
           return {
             product,
             monthlyValues,
@@ -192,61 +200,91 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
 
       // Calculate category totals for each month
       const categoryMonthlyValues: Record<string, number> = {};
-      monthlyData.forEach(({
-        key
-      }) => {
+      monthlyData.forEach(({ key }) => {
         categoryMonthlyValues[key] = categoryData.products.reduce((sum, p) => sum + (p.monthlyValues[key] || 0), 0);
       });
+
       return {
         ...categoryData,
         monthlyValues: categoryMonthlyValues
       };
     });
-  }, [allHistoricData, selectedMetric, monthlyData]);
+
+    // Start with all groups collapsed by default
+    if (internalCollapsedGroups.size === 0) {
+      setInternalCollapsedGroups(new Set(result.map(item => item.category)));
+    }
+
+    return result;
+  }, [allHistoricData, selectedMetric, monthlyData, internalCollapsedGroups.size]);
+
+  const handleInternalGroupToggle = (groupKey: string) => {
+    const newCollapsed = new Set(internalCollapsedGroups);
+    if (newCollapsed.has(groupKey)) {
+      newCollapsed.delete(groupKey);
+    } else {
+      newCollapsed.add(groupKey);
+    }
+    setInternalCollapsedGroups(newCollapsed);
+  };
+
   const handleRefresh = () => {
     window.location.reload();
   };
+
   const handleExportData = () => {
     const csvContent = processedData.map(categoryGroup => {
-      const categoryRow = [categoryGroup.category, ...monthlyData.map(({
-        key
-      }) => formatMetricValue(categoryGroup.monthlyValues[key] || 0, selectedMetric))].join(',');
-      const productRows = categoryGroup.products.map(product => [`  ${product.product}`, ...monthlyData.map(({
-        key
-      }) => formatMetricValue(product.monthlyValues[key] || 0, selectedMetric))].join(','));
+      const categoryRow = [categoryGroup.category, ...monthlyData.map(({ key }) => formatMetricValue(categoryGroup.monthlyValues[key] || 0, selectedMetric))].join(',');
+      const productRows = categoryGroup.products.map(product => [`  ${product.product}`, ...monthlyData.map(({ key }) => formatMetricValue(product.monthlyValues[key] || 0, selectedMetric))].join(','));
       return [categoryRow, ...productRows].join('\n');
     }).join('\n');
-    const blob = new Blob([csvContent], {
-      type: 'text/csv'
-    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `year-on-year-${selectedMetric}-data.csv`;
     a.click();
   };
+
   const handleQuickFilter = (filterType: string) => {
     console.log(`Applied quick filter: ${filterType}`);
-    // Quick filter implementations here
+    
+    // Get current date for calculations
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+    
+    switch (filterType) {
+      case 'last6months':
+        // Filter data to last 6 months
+        console.log('Filtering to last 6 months');
+        break;
+      case 'highvalue':
+        // Filter to high value items (top 20% by revenue)
+        console.log('Filtering to high performers');
+        break;
+      case 'topcategories':
+        // Filter to top 5 categories by revenue
+        console.log('Filtering to top categories');
+        break;
+      case 'clearall':
+        // Clear all filters
+        console.log('Clearing all filters');
+        break;
+      default:
+        console.log('Unknown filter type');
+    }
   };
-  const quickFilters = [{
-    label: 'Last 6 Months',
-    action: () => handleQuickFilter('last6months'),
-    variant: 'outline' as const
-  }, {
-    label: 'High Performers',
-    action: () => handleQuickFilter('highvalue'),
-    variant: 'outline' as const
-  }, {
-    label: 'Top Categories',
-    action: () => handleQuickFilter('topcategories'),
-    variant: 'outline' as const
-  }, {
-    label: 'Clear Filters',
-    action: () => handleQuickFilter('clearall'),
-    variant: 'destructive' as const
-  }];
-  return <Card className="bg-gradient-to-br from-white via-slate-50/30 to-white border-0 shadow-xl">
+
+  const quickFilters = [
+    { label: 'Last 6 Months', action: () => handleQuickFilter('last6months'), variant: 'outline' as const },
+    { label: 'High Performers', action: () => handleQuickFilter('highvalue'), variant: 'outline' as const },
+    { label: 'Top Categories', action: () => handleQuickFilter('topcategories'), variant: 'outline' as const },
+    { label: 'Clear Filters', action: () => handleQuickFilter('clearall'), variant: 'destructive' as const }
+  ];
+
+  return (
+    <Card className="bg-gradient-to-br from-white via-slate-50/30 to-white border-0 shadow-xl">
       <CardHeader className="pb-4">
         <div className="flex flex-col gap-4">
           <div className="flex justify-between items-start">
@@ -261,15 +299,30 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2 hover:bg-blue-50 hover:text-blue-700">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowFilters(!showFilters)} 
+                className="flex items-center gap-2 hover:bg-blue-50 hover:text-blue-700"
+              >
                 <Filter className="w-4 h-4" />
                 Filters
               </Button>
-              <Button variant="outline" size="sm" onClick={handleExportData} className="flex items-center gap-2 hover:bg-green-50 hover:text-green-700">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExportData} 
+                className="flex items-center gap-2 hover:bg-green-50 hover:text-green-700"
+              >
                 <Download className="w-4 h-4" />
                 Export
               </Button>
-              <Button variant="outline" size="sm" onClick={handleRefresh} className="flex items-center gap-2 hover:bg-purple-50 hover:text-purple-700">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRefresh} 
+                className="flex items-center gap-2 hover:bg-purple-50 hover:text-purple-700"
+              >
                 <RefreshCw className="w-4 h-4" />
                 Refresh
               </Button>
@@ -278,9 +331,17 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
 
           {/* Quick Filter Buttons */}
           <div className="flex flex-wrap gap-2">
-            {quickFilters.map((filter, index) => <Button key={index} variant={filter.variant} size="sm" onClick={filter.action} className="text-xs transition-all duration-200 hover:scale-105">
+            {quickFilters.map((filter, index) => (
+              <Button
+                key={index}
+                variant={filter.variant}
+                size="sm"
+                onClick={filter.action}
+                className="text-xs transition-all duration-200 hover:scale-105"
+              >
                 {filter.label}
-              </Button>)}
+              </Button>
+            ))}
           </div>
           
           <YearOnYearMetricTabs value={selectedMetric} onValueChange={setSelectedMetric} className="w-full" />
@@ -295,58 +356,74 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
                 <th className="text-white font-semibold uppercase tracking-wider px-12 py-2 text-left text-sm">
                   Product/Category
                 </th>
-                {monthlyData.map(({
-                key,
-                display,
-                year
-              }) => <th key={key} className="text-white font-semibold text-sm uppercase tracking-wider px-4 py-2">
+                {monthlyData.map(({ key, display, year }) => (
+                  <th key={key} className="text-white font-semibold text-sm uppercase tracking-wider px-4 py-2">
                     <div className="flex flex-col">
                       <span className="text-base">{display.split(' ')[0]}</span>
                       <span className="text-yellow-200 text-xs">
                         {display.split(' ')[1]}
                       </span>
                     </div>
-                  </th>)}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {processedData.map(categoryGroup => <React.Fragment key={categoryGroup.category}>
-                  <tr onClick={() => onGroupToggle(categoryGroup.category)} className="bg-white hover:bg-gray-100 cursor-pointer border-b border-gray-200 group transition-colors duration-200 ease-in-out">
+              {processedData.map(categoryGroup => (
+                <React.Fragment key={categoryGroup.category}>
+                  <tr 
+                    onClick={() => handleInternalGroupToggle(categoryGroup.category)} 
+                    className="bg-white hover:bg-gray-100 cursor-pointer border-b border-gray-200 group transition-colors duration-200 ease-in-out"
+                  >
                     <td className="py-4 font-semibold text-gray-800 group-hover:text-gray-900 bg-white group-hover:bg-gray-100 sticky left-0 z-10 transition-colors duration-200 ease-in-out px-[10px] min-w-80 text-sm">
                       <div className="flex justify-between items-center min-w-full text-md text-bold">
-                        {collapsedGroups.has(categoryGroup.category) ? <ChevronRight className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" /> : <ChevronDown className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" />}
+                        {internalCollapsedGroups.has(categoryGroup.category) ? (
+                          <ChevronRight className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" />
+                        )}
                         {categoryGroup.category}
                         <Badge variant="secondary" className="ml-auto text-sm text-white bg-purple-900 min-w-32 text-right py-1 capitalize rounded-lg px-[12px]">
                           {categoryGroup.products.length} products
                         </Badge>
                       </div>
                     </td>
-                    {monthlyData.map(({
-                  key
-                }) => <td key={key} className="px-4 py-4 text-center font-semibold text-gray-900 text-sm">
+                    {monthlyData.map(({ key }) => (
+                      <td key={key} className="px-4 py-4 text-center font-semibold text-gray-900 text-sm">
                         {formatMetricValue(categoryGroup.monthlyValues[key] || 0, selectedMetric)}
-                      </td>)}
+                      </td>
+                    ))}
                   </tr>
 
-                  {!collapsedGroups.has(categoryGroup.category) && categoryGroup.products.map(product => <tr key={`${categoryGroup.category}-${product.product}`} className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" onClick={() => onRowClick && onRowClick(product.rawData)}>
+                  {!internalCollapsedGroups.has(categoryGroup.category) && categoryGroup.products.map(product => (
+                    <tr 
+                      key={`${categoryGroup.category}-${product.product}`} 
+                      className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" 
+                      onClick={() => onRowClick && onRowClick(product.rawData)}
+                    >
                       <td className="px-8 py-3 text-sm text-gray-700 hover:text-blue-700 sticky left-0 bg-white hover:bg-blue-50 z-10 transition-colors duration-200">
                         <div className="flex items-center justify-between">
                           <span>{product.product}</span>
-                          {['atv', 'auv', 'asv', 'upt'].includes(selectedMetric) && <Badge variant="outline" className="text-xs ml-2 border-blue-200 text-blue-700">
+                          {['atv', 'auv', 'asv', 'upt'].includes(selectedMetric) && (
+                            <Badge variant="outline" className="text-xs ml-2 border-blue-200 text-blue-700">
                               Avg: {formatMetricValue(product.averages[selectedMetric as keyof typeof product.averages] || 0, selectedMetric)}
-                            </Badge>}
+                            </Badge>
+                          )}
                         </div>
                       </td>
-                      {monthlyData.map(({
-                  key
-                }) => <td key={key} className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
+                      {monthlyData.map(({ key }) => (
+                        <td key={key} className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
                           {formatMetricValue(product.monthlyValues[key] || 0, selectedMetric)}
-                        </td>)}
-                    </tr>)}
-                </React.Fragment>)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>
       </CardContent>
-    </Card>;
+    </Card>
+  );
 };

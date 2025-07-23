@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AutoCloseFilterSection } from './AutoCloseFilterSection';
@@ -58,6 +58,7 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     paymentMethod: []
   });
 
+<<<<<<< HEAD
   // Helper function to filter data by date range and other filters
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
@@ -80,6 +81,10 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
   };
 
   const applyFilters = (rawData: SalesData[], includeHistoric: boolean = false) => {
+=======
+  // Memoized filter function to prevent unnecessary recalculations
+  const applyFilters = useCallback((rawData: SalesData[], includeHistoric: boolean = false) => {
+>>>>>>> e9260ccb04067d4646ddae997647e716a8360f32
     let filtered = rawData;
 
     // Apply location filter first
@@ -122,15 +127,15 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
       filtered = filtered.filter(item => (item.paymentValue || 0) <= filters.maxAmount!);
     }
     return filtered;
-  };
+  }, [activeLocation, filters]);
 
-  const filteredData = useMemo(() => applyFilters(data), [data, filters, activeLocation]);
-  const allHistoricData = useMemo(() => applyFilters(data, true), [data, activeLocation]);
+  const filteredData = useMemo(() => applyFilters(data), [data, applyFilters]);
+  const allHistoricData = useMemo(() => applyFilters(data, true), [data, applyFilters]);
 
   // Get historic data for year-on-year comparison (includes 2024 data)
   const historicData = useMemo(() => {
     return applyFilters(data, true);
-  }, [data, activeLocation]);
+  }, [data, applyFilters]);
 
   const handleRowClick = (rowData: any) => {
     console.log('Row clicked with data:', rowData);
@@ -194,7 +199,7 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
               <SalesAnimatedMetricCards data={filteredData} />
 
               {/* Interactive Charts */}
-              <SalesInteractiveCharts data={allHistoricData} />
+              <SalesInteractiveCharts data={allHistoricData} filters={filters} />
 
               {/* Top/Bottom Performers */}
               <UnifiedTopBottomSellers data={filteredData} />
@@ -247,6 +252,8 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
                       data={allHistoricData}
                       onRowClick={handleRowClick}
                       selectedMetric={activeYoyMetric}
+                      collapsedGroups={collapsedGroups}
+                      onGroupToggle={handleGroupToggle}
                     />
                   </section>
                 </TabsContent>

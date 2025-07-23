@@ -1,4 +1,3 @@
-
 export interface SalesData {
   memberId: string;
   customerName: string;
@@ -193,6 +192,7 @@ export type YearOnYearMetricType =
   | 'revenue' 
   | 'transactions' 
   | 'members' 
+  | 'units'
   | 'atv' 
   | 'auv' 
   | 'asv' 
