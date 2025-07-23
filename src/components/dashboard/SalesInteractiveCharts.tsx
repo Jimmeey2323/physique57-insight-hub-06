@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,27 @@ interface SalesInteractiveChartsProps {
   filters: FilterOptions;
 }
 
+// Move parseDate outside component to make it stable
+const parseDate = (dateStr: string): Date | null => {
+  if (!dateStr) return null;
+  
+  // Handle DD/MM/YYYY format
+  const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  }
+  
+  // Handle DD/MM/YYYY HH:MM:SS format
+  const ddmmyyyyTime = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/);
+  if (ddmmyyyyTime) {
+    const [, day, month, year, hour, minute, second] = ddmmyyyyTime;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
+  }
+  
+  return null;
+};
+
 export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ data, filters }) => {
   console.log('SalesInteractiveCharts render - data length:', data?.length, 'filters:', filters);
   
@@ -19,27 +41,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
   const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
   const [productMetric, setProductMetric] = useState<'revenue' | 'volume'>('revenue');
 
-  const parseDate = useCallback((dateStr: string): Date | null => {
-    if (!dateStr) return null;
-    
-    // Handle DD/MM/YYYY format
-    const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (ddmmyyyy) {
-      const [, day, month, year] = ddmmyyyy;
-      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    }
-    
-    // Handle DD/MM/YYYY HH:MM:SS format
-    const ddmmyyyyTime = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})$/);
-    if (ddmmyyyyTime) {
-      const [, day, month, year, hour, minute, second] = ddmmyyyyTime;
-      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
-    }
-    
-    return null;
-  }, []);
-
-  // Filter data based on time range - memoize with stable dependencies
+  // Filter data based on time range - simplified dependencies
   const filteredData = useMemo(() => {
     console.log('filteredData useMemo running - timeRange:', timeRange, 'data length:', data?.length);
     
@@ -76,7 +78,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     
     console.log('filteredData result length:', result.length);
     return result;
-  }, [data, timeRange, parseDate]);
+  }, [data, timeRange]); // Removed parseDate from dependencies
 
   // Monthly revenue trend
   const monthlyRevenue = useMemo(() => {
@@ -107,7 +109,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     
     console.log('monthlyRevenue result length:', result.length);
     return result;
-  }, [filteredData, parseDate]);
+  }, [filteredData]); // Removed parseDate from dependencies
 
   // Top 10 products by revenue or volume
   const topProducts = useMemo(() => {
