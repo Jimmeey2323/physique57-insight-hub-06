@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { SalesData } from '@/types/dashboard';
@@ -167,20 +167,20 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     return String(value);
   };
 
-  const handleTimeRangeChange = (newRange: string) => {
+  const handleTimeRangeChange = useCallback((newRange: string) => {
     console.log('Time range changed to:', newRange);
     setTimeRange(newRange);
-  };
+  }, []);
 
-  const handleChartChange = (newChart: string) => {
+  const handleChartChange = useCallback((newChart: string) => {
     console.log('Chart changed to:', newChart);
     setActiveChart(newChart);
-  };
+  }, []);
 
-  const handleProductMetricChange = (newMetric: string) => {
+  const handleProductMetricChange = useCallback((newMetric: string) => {
     console.log('Product metric changed to:', newMetric);
     setProductMetric(newMetric);
-  };
+  }, []);
 
   // Show loading state or empty state if no data
   if (!data || data.length === 0) {
