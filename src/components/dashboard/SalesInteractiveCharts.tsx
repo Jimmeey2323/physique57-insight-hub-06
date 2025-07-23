@@ -35,6 +35,7 @@ interface ProductDataPoint {
 export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ data }) => {
   const [activeChart, setActiveChart] = useState('revenue');
   const [timeRange, setTimeRange] = useState('6months');
+  const [productMetric, setProductMetric] = useState('revenue');
 
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
@@ -92,7 +93,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       }
     });
 
-    return Object.values(months).map(month => ({
+    const result = Object.values(months).map(month => ({
       month: month.month,
       revenue: month.revenue,
       transactions: month.transactions,
@@ -107,7 +108,18 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       const bDate = new Date(parseInt(bYear), monthNames.indexOf(bMonth));
       return aDate.getTime() - bDate.getTime();
     });
-  }, [data]);
+
+    // Apply time range filter
+    if (timeRange === '3months') {
+      return result.slice(-3);
+    } else if (timeRange === '6months') {
+      return result.slice(-6);
+    } else if (timeRange === 'year') {
+      return result.slice(-12);
+    }
+    
+    return result;
+  }, [data, timeRange]);
 
   const categoryData = useMemo((): CategoryDataPoint[] => {
     if (!data || data.length === 0) return [];
@@ -155,6 +167,21 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     return String(value);
   };
 
+  const handleTimeRangeChange = (newRange: string) => {
+    console.log('Time range changed to:', newRange);
+    setTimeRange(newRange);
+  };
+
+  const handleChartChange = (newChart: string) => {
+    console.log('Chart changed to:', newChart);
+    setActiveChart(newChart);
+  };
+
+  const handleProductMetricChange = (newMetric: string) => {
+    console.log('Product metric changed to:', newMetric);
+    setProductMetric(newMetric);
+  };
+
   // Show loading state or empty state if no data
   if (!data || data.length === 0) {
     return (
@@ -185,7 +212,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
                 Category Revenue Distribution
               </CardTitle>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={() => console.log('Filter clicked')}>
                   <Filter className="w-4 h-4 mr-1" />
                   Filter
                 </Button>
@@ -227,13 +254,21 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-green-600" />
-                Top 10 Products by Revenue
+                Top 10 Products by {productMetric === 'revenue' ? 'Revenue' : 'Volume'}
               </CardTitle>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm">
+                <Button 
+                  variant={productMetric === 'revenue' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => handleProductMetricChange('revenue')}
+                >
                   Revenue
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button 
+                  variant={productMetric === 'volume' ? 'default' : 'outline'} 
+                  size="sm"
+                  onClick={() => handleProductMetricChange('volume')}
+                >
                   Volume
                 </Button>
               </div>
@@ -244,14 +279,22 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <ResponsiveContainer width="100%" height={250}>
                 <BarChart data={productData} layout="horizontal">
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis type="number" tickFormatter={formatTooltipValue} className="text-xs" />
+                  <XAxis 
+                    type="number" 
+                    tickFormatter={productMetric === 'revenue' ? formatTooltipValue : formatTooltipNumber} 
+                    className="text-xs" 
+                  />
                   <YAxis dataKey="name" type="category" width={120} className="text-xs" />
                   <Tooltip 
-                    formatter={(value) => formatTooltipValue(value)}
+                    formatter={(value) => productMetric === 'revenue' ? formatTooltipValue(value) : formatTooltipNumber(value)}
                     labelClassName="text-sm font-medium"
                     contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
                   />
-                  <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} />
+                  <Bar 
+                    dataKey={productMetric === 'revenue' ? 'value' : 'count'} 
+                    fill="#10B981" 
+                    radius={[0, 4, 4, 0]} 
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -277,21 +320,21 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
                 <Button
                   variant={timeRange === '3months' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTimeRange('3months')}
+                  onClick={() => handleTimeRangeChange('3months')}
                 >
                   3M
                 </Button>
                 <Button
                   variant={timeRange === '6months' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTimeRange('6months')}
+                  onClick={() => handleTimeRangeChange('6months')}
                 >
                   6M
                 </Button>
                 <Button
                   variant={timeRange === 'year' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setTimeRange('year')}
+                  onClick={() => handleTimeRangeChange('year')}
                 >
                   1Y
                 </Button>
@@ -303,21 +346,21 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={activeChart === 'revenue' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => setActiveChart('revenue')}
+                onClick={() => handleChartChange('revenue')}
               >
                 Revenue
               </Button>
               <Button
                 variant={activeChart === 'transactions' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => setActiveChart('transactions')}
+                onClick={() => handleChartChange('transactions')}
               >
                 Transactions
               </Button>
               <Button
                 variant={activeChart === 'members' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => setActiveChart('members')}
+                onClick={() => handleChartChange('members')}
               >
                 Members
               </Button>
