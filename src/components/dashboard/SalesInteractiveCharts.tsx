@@ -104,7 +104,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     const productData: Record<string, { revenue: number; volume: number }> = {};
     
     filteredData.forEach(item => {
-      const product = item.cleanedProduct || item.product || 'Unknown';
+      const product = item.cleanedProduct || item.paymentItem || 'Unknown';
       if (product && product.trim()) {
         if (!productData[product]) {
           productData[product] = { revenue: 0, volume: 0 };
@@ -138,7 +138,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     const categoryData: Record<string, number> = {};
     
     filteredData.forEach(item => {
-      const category = item.cleanedCategory || item.category || 'Unknown';
+      const category = item.cleanedCategory || item.paymentCategory || 'Unknown';
       if (category && category.trim() && item.paymentValue) {
         categoryData[category] = (categoryData[category] || 0) + item.paymentValue;
       }
@@ -158,6 +158,19 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
 
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
 
+  // Use useCallback to prevent re-renders
+  const handleTimeRangeChange = React.useCallback((range: '3m' | '6m' | '12m' | 'ytd') => {
+    setTimeRange(range);
+  }, []);
+
+  const handleChartTypeChange = React.useCallback((type: 'bar' | 'line' | 'pie') => {
+    setChartType(type);
+  }, []);
+
+  const handleProductMetricChange = React.useCallback((metric: 'revenue' | 'volume') => {
+    setProductMetric(metric);
+  }, []);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Monthly Revenue Trend */}
@@ -172,28 +185,28 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={timeRange === '3m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setTimeRange('3m')}
+                onClick={() => handleTimeRangeChange('3m')}
               >
                 3M
               </Button>
               <Button
                 variant={timeRange === '6m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setTimeRange('6m')}
+                onClick={() => handleTimeRangeChange('6m')}
               >
                 6M
               </Button>
               <Button
                 variant={timeRange === '12m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setTimeRange('12m')}
+                onClick={() => handleTimeRangeChange('12m')}
               >
                 12M
               </Button>
               <Button
                 variant={timeRange === 'ytd' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setTimeRange('ytd')}
+                onClick={() => handleTimeRangeChange('ytd')}
               >
                 YTD
               </Button>
@@ -226,7 +239,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             <Button
               variant={chartType === 'bar' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setChartType('bar')}
+              onClick={() => handleChartTypeChange('bar')}
             >
               <BarChart3 className="w-4 h-4 mr-1" />
               Bar
@@ -234,7 +247,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             <Button
               variant={chartType === 'line' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => setChartType('line')}
+              onClick={() => handleChartTypeChange('line')}
             >
               <TrendingUp className="w-4 h-4 mr-1" />
               Line
@@ -255,7 +268,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={productMetric === 'revenue' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setProductMetric('revenue')}
+                onClick={() => handleProductMetricChange('revenue')}
               >
                 <DollarSign className="w-4 h-4 mr-1" />
                 Revenue
@@ -263,7 +276,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={productMetric === 'volume' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => setProductMetric('volume')}
+                onClick={() => handleProductMetricChange('volume')}
               >
                 <Users className="w-4 h-4 mr-1" />
                 Volume
