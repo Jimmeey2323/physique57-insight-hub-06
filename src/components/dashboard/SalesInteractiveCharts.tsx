@@ -38,15 +38,29 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
 
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
+    
+    // Handle DD/MM/YYYY format
     const ddmmyyyy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (ddmmyyyy) {
       const [, day, month, year] = ddmmyyyy;
       return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
-    return null;
+    
+    // Handle DD/MM/YYYY HH:MM:SS format
+    const ddmmyyyyTime = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{2}:\d{2}:\d{2}$/);
+    if (ddmmyyyyTime) {
+      const [, day, month, year] = ddmmyyyyTime;
+      return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    }
+    
+    // Fallback to standard Date parsing
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? null : date;
   };
 
   const monthlyData = useMemo((): MonthlyDataPoint[] => {
+    if (!data || data.length === 0) return [];
+    
     const months: Record<string, {
       month: string;
       revenue: number;
@@ -58,7 +72,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     
     data.forEach(item => {
       const date = parseDate(item.paymentDate);
-      if (date) {
+      if (date && !isNaN(date.getTime())) {
         const key = `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
         if (!months[key]) {
           months[key] = {
@@ -71,7 +85,9 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         }
         months[key].revenue += item.paymentValue || 0;
         months[key].transactions += 1;
-        months[key].members.add(item.memberId);
+        if (item.memberId) {
+          months[key].members.add(item.memberId);
+        }
         months[key].vat += item.paymentVAT || 0;
       }
     });
@@ -82,11 +98,20 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       transactions: month.transactions,
       members: month.members.size,
       vat: month.vat,
-      atv: month.revenue / month.transactions || 0
-    }));
+      atv: month.transactions > 0 ? month.revenue / month.transactions : 0
+    })).sort((a, b) => {
+      // Sort by year and month
+      const [aMonth, aYear] = a.month.split(' ');
+      const [bMonth, bYear] = b.month.split(' ');
+      const aDate = new Date(parseInt(aYear), monthNames.indexOf(aMonth));
+      const bDate = new Date(parseInt(bYear), monthNames.indexOf(bMonth));
+      return aDate.getTime() - bDate.getTime();
+    });
   }, [data]);
 
   const categoryData = useMemo((): CategoryDataPoint[] => {
+    if (!data || data.length === 0) return [];
+    
     const categories: Record<string, CategoryDataPoint> = {};
     data.forEach(item => {
       const category = item.cleanedCategory || 'Uncategorized';
@@ -100,6 +125,8 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
   }, [data]);
 
   const productData = useMemo((): ProductDataPoint[] => {
+    if (!data || data.length === 0) return [];
+    
     const products: Record<string, ProductDataPoint> = {};
     data.forEach(item => {
       const product = item.cleanedProduct || 'Uncategorized';
@@ -128,6 +155,23 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     return String(value);
   };
 
+  // Show loading state or empty state if no data
+  if (!data || data.length === 0) {
+    return (
+      <div className="space-y-6">
+        <Card className="bg-white/80 backdrop-blur-sm shadow-lg border-0">
+          <CardContent className="p-8 text-center">
+            <div className="text-gray-500">
+              <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No sales data available</p>
+              <p className="text-sm">Data will appear here once sales information is loaded</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* First Row - Two Small Charts */}
@@ -149,25 +193,31 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value) => formatTooltipValue(value)} />
-              </PieChart>
-            </ResponsiveContainer>
+            {categoryData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatTooltipValue(value)} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-gray-500">
+                <p>No category data available</p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -190,19 +240,25 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             </div>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={productData} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                <XAxis type="number" tickFormatter={formatTooltipValue} className="text-xs" />
-                <YAxis dataKey="name" type="category" width={120} className="text-xs" />
-                <Tooltip 
-                  formatter={(value) => formatTooltipValue(value)}
-                  labelClassName="text-sm font-medium"
-                  contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                />
-                <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {productData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={productData} layout="horizontal">
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis type="number" tickFormatter={formatTooltipValue} className="text-xs" />
+                  <YAxis dataKey="name" type="category" width={120} className="text-xs" />
+                  <Tooltip 
+                    formatter={(value) => formatTooltipValue(value)}
+                    labelClassName="text-sm font-medium"
+                    contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                  />
+                  <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[250px] flex items-center justify-center text-gray-500">
+                <p>No product data available</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -266,49 +322,55 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
                 Members
               </Button>
             </div>
-            <ResponsiveContainer width="100%" height={350}>
-              {activeChart === 'revenue' ? (
-                <AreaChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis tickFormatter={formatTooltipValue} className="text-xs" />
-                  <Tooltip 
-                    formatter={(value) => [formatTooltipValue(value), 'Revenue']}
-                    labelClassName="text-sm font-medium"
-                    contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                  />
-                  <Area 
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="#3B82F6" 
-                    fill="url(#colorRevenue)" 
-                    strokeWidth={2}
-                  />
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
-                    </linearGradient>
-                  </defs>
-                </AreaChart>
-              ) : activeChart === 'transactions' ? (
-                <LineChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
-                  <Tooltip formatter={(value) => formatTooltipNumber(value)} />
-                  <Line type="monotone" dataKey="transactions" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }} />
-                </LineChart>
-              ) : (
-                <LineChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="month" className="text-xs" />
-                  <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
-                  <Tooltip formatter={(value) => formatTooltipNumber(value)} />
-                  <Line type="monotone" dataKey="members" stroke="#10B981" strokeWidth={3} dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }} />
-                </LineChart>
-              )}
-            </ResponsiveContainer>
+            {monthlyData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={350}>
+                {activeChart === 'revenue' ? (
+                  <AreaChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipValue} className="text-xs" />
+                    <Tooltip 
+                      formatter={(value) => [formatTooltipValue(value), 'Revenue']}
+                      labelClassName="text-sm font-medium"
+                      contentStyle={{ background: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="revenue" 
+                      stroke="#3B82F6" 
+                      fill="url(#colorRevenue)" 
+                      strokeWidth={2}
+                    />
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                  </AreaChart>
+                ) : activeChart === 'transactions' ? (
+                  <LineChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
+                    <Tooltip formatter={(value) => formatTooltipNumber(value)} />
+                    <Line type="monotone" dataKey="transactions" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 4 }} />
+                  </LineChart>
+                ) : (
+                  <LineChart data={monthlyData}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="month" className="text-xs" />
+                    <YAxis tickFormatter={formatTooltipNumber} className="text-xs" />
+                    <Tooltip formatter={(value) => formatTooltipNumber(value)} />
+                    <Line type="monotone" dataKey="members" stroke="#10B981" strokeWidth={3} dot={{ fill: '#10B981', strokeWidth: 2, r: 4 }} />
+                  </LineChart>
+                )}
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[350px] flex items-center justify-center text-gray-500">
+                <p>No monthly data available</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
