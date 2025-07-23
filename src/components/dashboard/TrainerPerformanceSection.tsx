@@ -37,7 +37,7 @@ export const TrainerPerformanceSection = () => {
   const [activeLocation, setActiveLocation] = useState<string>('all');
   const [activeMetric, setActiveMetric] = useState<TrainerMetricType>('totalSessions');
   const [isFilterCollapsed, setIsFilterCollapsed] = useState(false);
-  const [quickFilters, setQuickFilters] = useState<string[]>([]);
+  const [quickFilters, setQuickFilters] = useState<Record<string, string[]>>({});
   const [filters, setFilters] = useState({
     location: '',
     trainer: '',
@@ -385,7 +385,7 @@ export const TrainerPerformanceSection = () => {
         </Card>
 
         {/* Quick Filters */}
-        {processedData && <TrainerQuickFilters activeFilters={quickFilters} onFilterChange={setQuickFilters} trainerCount={processedData.trainerCount} totalRevenue={processedData.totalRevenue} avgPerformance={processedData.avgConversion} />}
+        {processedData && <TrainerQuickFilters activeFilters={quickFilters} onFilterChange={(key, values) => setQuickFilters(prev => ({ ...prev, [key]: values }))} trainerCount={processedData.trainerCount} totalRevenue={processedData.totalRevenue} avgPerformance={processedData.avgConversion} />}
 
         {/* Filter Section */}
         <TrainerFilterSection data={filteredData} onFiltersChange={setFilters} isCollapsed={isFilterCollapsed} onToggleCollapse={() => setIsFilterCollapsed(!isFilterCollapsed)} />

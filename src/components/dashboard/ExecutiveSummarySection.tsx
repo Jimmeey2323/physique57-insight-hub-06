@@ -58,8 +58,8 @@ const ExecutiveSummarySection = () => {
   const filteredSessionsData = React.useMemo(() => {
     if (!sessionsData || !dateRange.start || !dateRange.end) return sessionsData;
     return sessionsData.filter(session => {
-      if (!session.classDate) return false;
-      const classDate = new Date(session.classDate);
+      if (!session.date) return false;
+      const classDate = new Date(session.date);
       return classDate >= dateRange.start! && classDate <= dateRange.end!;
     });
   }, [sessionsData, dateRange]);
@@ -76,8 +76,9 @@ const ExecutiveSummarySection = () => {
   const filteredPayrollData = React.useMemo(() => {
     if (!payrollData || !dateRange.start || !dateRange.end) return payrollData;
     return payrollData.filter(item => {
-      if (!item.payrollDate) return false;
-      const payrollDate = new Date(item.payrollDate);
+      if (!item.monthYear) return false;
+      // monthYear is in format like "May 2024", need to parse it
+      const payrollDate = new Date(item.monthYear + ' 01'); // Add day for valid date
       return payrollDate >= dateRange.start! && payrollDate <= dateRange.end!;
     });
   }, [payrollData, dateRange]);
@@ -109,7 +110,7 @@ const ExecutiveSummarySection = () => {
     // Trainer Metrics
     const uniqueTrainers = new Set(filteredPayrollData.map(item => item?.teacherName).filter(Boolean)).size;
     const avgTrainerRevenue = filteredPayrollData.reduce((sum, item) => sum + (item?.totalPaid || 0), 0) / uniqueTrainers || 0;
-    const topTrainer = filteredPayrollData.reduce((prev, current) => (current?.totalPaid || 0) > (prev?.totalPaid || 0) ? current : prev);
+    const topTrainer = filteredPayrollData.length > 0 ? filteredPayrollData.reduce((prev, current) => (current?.totalPaid || 0) > (prev?.totalPaid || 0) ? current : prev) : null;
 
     // Client Metrics - Fixed calculation using correct property names
     const validNewClientData = filteredNewClientData.filter(client => client && typeof client === 'object');
@@ -120,7 +121,7 @@ const ExecutiveSummarySection = () => {
     // Use fallback calculations if no specific conversion data
     const conversionRate = newClients > 0 ? convertedClients / newClients * 100 : validNewClientData.length > 0 ? validNewClientData.length * 0.65 : 0;
     const retentionRate = newClients > 0 ? retainedClients / newClients * 100 : validNewClientData.length > 0 ? validNewClientData.length * 0.82 : 0;
-    const avgLTV = validNewClientData.reduce((sum, client) => sum + (client?.ltv || 0), 0) / validNewClientData.length || 0;
+    const avgLTV = validNewClientData.length > 0 ? validNewClientData.reduce((sum, client) => sum + (client?.ltv || 0), 0) / validNewClientData.length : 0;
 
     // Lead Metrics (if leads data exists)
     const totalLeads = leadsData?.length || 0;

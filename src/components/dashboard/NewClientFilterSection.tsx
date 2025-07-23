@@ -33,45 +33,44 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 interface NewClientFilterSectionProps {
-  filters: {
-    locations: string[];
-    sources: string[];
-    retentionStatus: string[];
-    membershipBought: string[];
-    dateRange: { start: Date | null; end: Date | null };
-  };
-  setFilters: (filters: any) => void;
-  options: {
-    locations: string[];
-    sources: string[];
-    retentionStatuses: string[];
-    membershipOptions: string[];
-  };
+  filters: import('@/types/dashboard').NewClientFilterOptions;
+  onFiltersChange: (filters: import('@/types/dashboard').NewClientFilterOptions) => void;
+  data: import('@/types/dashboard').NewClientData[];
 }
 
 export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
   filters,
-  setFilters,
-  options
+  onFiltersChange,
+  data
 }) => {
   const [openPopover, setOpenPopover] = useState<string | null>(null);
 
+  // Generate options from actual data
+  const options = React.useMemo(() => ({
+    locations: [...new Set(data.map(item => item.firstVisitLocation).filter(Boolean))],
+    trainers: [...new Set(data.map(item => item.trainerName).filter(Boolean))],
+    retentionStatuses: [...new Set(data.map(item => item.retentionStatus).filter(Boolean))],
+    conversionStatuses: [...new Set(data.map(item => item.conversionStatus).filter(Boolean))],
+    paymentMethods: [...new Set(data.map(item => item.paymentMethod).filter(Boolean))],
+    isNewOptions: [...new Set(data.map(item => item.isNew).filter(Boolean))]
+  }), [data]);
+
   const filterConfigs = [
     {
-      key: 'locations',
+      key: 'location',
       label: 'Locations',
       icon: MapPin,
       options: options.locations,
-      values: filters.locations,
+      values: filters.location,
       description: 'Filter by first visit location'
     },
     {
-      key: 'sources',
-      label: 'Lead Sources',
-      icon: Tag,
-      options: options.sources,
-      values: filters.sources,
-      description: 'Filter by lead source'
+      key: 'trainer',
+      label: 'Trainers',
+      icon: Users,
+      options: options.trainers,
+      values: filters.trainer,
+      description: 'Filter by trainer'
     },
     {
       key: 'retentionStatus',
@@ -82,12 +81,12 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
       description: 'Filter by current retention status'
     },
     {
-      key: 'membershipBought',
-      label: 'Membership Status',
+      key: 'conversionStatus',
+      label: 'Conversion Status',
       icon: Tag,
-      options: options.membershipOptions,
-      values: filters.membershipBought,
-      description: 'Filter by membership purchase status'
+      options: options.conversionStatuses,
+      values: filters.conversionStatus,
+      description: 'Filter by conversion status'
     }
   ];
 
@@ -101,36 +100,39 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
       currentValues.push(value);
     }
     
-    setFilters({ 
+    onFiltersChange({ 
       ...filters, 
       [filterKey]: currentValues 
     });
   };
 
-  const handleDateRangeChange = (type: 'start' | 'end', date: Date | null) => {
-    setFilters({
+  const handleDateRangeChange = (type: 'start' | 'end', dateStr: string) => {
+    onFiltersChange({
       ...filters,
       dateRange: {
         ...filters.dateRange,
-        [type]: date
+        [type]: dateStr
       }
     });
   };
 
   const clearFilter = (filterKey: string) => {
-    setFilters({
+    onFiltersChange({
       ...filters,
       [filterKey]: []
     });
   };
 
   const clearAllFilters = () => {
-    setFilters({
-      locations: [],
-      sources: [],
+    onFiltersChange({
+      dateRange: { start: '', end: '' },
+      location: [],
+      homeLocation: [],
+      trainer: [],
+      paymentMethod: [],
       retentionStatus: [],
-      membershipBought: [],
-      dateRange: { start: null, end: null }
+      conversionStatus: [],
+      isNew: []
     });
   };
 
@@ -289,14 +291,14 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
                     Start Date (First Visit)
                   </label>
                   {filters.dateRange.start && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDateRangeChange('start', null)}
-                      className="h-6 px-2 text-xs"
-                    >
-                      Clear
-                    </Button>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={() => handleDateRangeChange('start', '')}
+                       className="h-6 px-2 text-xs"
+                     >
+                       Clear
+                     </Button>
                   )}
                 </div>
                 <Popover>
@@ -306,24 +308,24 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
                       className="w-full justify-start text-left font-normal"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filters.dateRange.start 
-                        ? format(filters.dateRange.start, 'PPP')
-                        : 'Select start date'
-                      }
+                       {filters.dateRange.start 
+                         ? format(new Date(filters.dateRange.start), 'PPP')
+                         : 'Select start date'
+                       }
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={filters.dateRange.start || undefined}
-                      onSelect={(date) => handleDateRangeChange('start', date || null)}
-                      disabled={(date) => 
-                        filters.dateRange.end 
-                          ? date > filters.dateRange.end 
-                          : false
-                      }
-                      initialFocus
-                    />
+                     <CalendarComponent
+                       mode="single"
+                       selected={filters.dateRange.start ? new Date(filters.dateRange.start) : undefined}
+                       onSelect={(date) => handleDateRangeChange('start', date ? date.toISOString().split('T')[0] : '')}
+                       disabled={(date) => 
+                         filters.dateRange.end 
+                           ? date > new Date(filters.dateRange.end)
+                           : false
+                       }
+                       initialFocus
+                     />
                   </PopoverContent>
                 </Popover>
                 <p className="text-xs text-gray-500">Filter by first visit date (start range)</p>
@@ -336,14 +338,14 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
                     End Date (First Visit)
                   </label>
                   {filters.dateRange.end && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDateRangeChange('end', null)}
-                      className="h-6 px-2 text-xs"
-                    >
-                      Clear
-                    </Button>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={() => handleDateRangeChange('end', '')}
+                       className="h-6 px-2 text-xs"
+                     >
+                       Clear
+                     </Button>
                   )}
                 </div>
                 <Popover>
@@ -353,24 +355,24 @@ export const NewClientFilterSection: React.FC<NewClientFilterSectionProps> = ({
                       className="w-full justify-start text-left font-normal"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {filters.dateRange.end 
-                        ? format(filters.dateRange.end, 'PPP')
-                        : 'Select end date'
-                      }
+                       {filters.dateRange.end 
+                         ? format(new Date(filters.dateRange.end), 'PPP')
+                         : 'Select end date'
+                       }
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={filters.dateRange.end || undefined}
-                      onSelect={(date) => handleDateRangeChange('end', date || null)}
-                      disabled={(date) => 
-                        filters.dateRange.start 
-                          ? date < filters.dateRange.start 
-                          : false
-                      }
-                      initialFocus
-                    />
+                     <CalendarComponent
+                       mode="single"
+                       selected={filters.dateRange.end ? new Date(filters.dateRange.end) : undefined}
+                       onSelect={(date) => handleDateRangeChange('end', date ? date.toISOString().split('T')[0] : '')}
+                       disabled={(date) => 
+                         filters.dateRange.start 
+                           ? date < new Date(filters.dateRange.start)
+                           : false
+                       }
+                       initialFocus
+                     />
                   </PopoverContent>
                 </Popover>
                 <p className="text-xs text-gray-500">Filter by first visit date (end range)</p>
