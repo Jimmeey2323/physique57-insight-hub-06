@@ -18,7 +18,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
   const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
   const [productMetric, setProductMetric] = useState<'revenue' | 'volume'>('revenue');
 
-  const parseDate = (dateStr: string): Date | null => {
+  const parseDate = useCallback((dateStr: string): Date | null => {
     if (!dateStr) return null;
     
     // Handle DD/MM/YYYY format
@@ -36,9 +36,9 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     }
     
     return null;
-  };
+  }, []);
 
-  // Filter data based on time range
+  // Filter data based on time range - memoize with stable dependencies
   const filteredData = useMemo(() => {
     if (!Array.isArray(data) || data.length === 0) return [];
     
@@ -62,15 +62,12 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
     }
     
-    const filtered = data.filter(item => {
+    return data.filter(item => {
       const itemDate = parseDate(item.paymentDate);
       if (!itemDate) return false;
-      const isInRange = itemDate >= startDate && itemDate <= now;
-      return isInRange;
+      return itemDate >= startDate && itemDate <= now;
     });
-    
-    return filtered;
-  }, [data, timeRange]);
+  }, [data, timeRange, parseDate]);
 
   // Monthly revenue trend
   const monthlyRevenue = useMemo(() => {
@@ -86,16 +83,14 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       }
     });
 
-    const result = Object.entries(monthlyData)
+    return Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, revenue]) => ({
         month: new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
         revenue: revenue,
         formattedRevenue: formatCurrency(revenue)
       }));
-
-    return result;
-  }, [filteredData]);
+  }, [filteredData, parseDate]);
 
   // Top 10 products by revenue or volume
   const topProducts = useMemo(() => {
@@ -115,8 +110,8 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     });
 
     const sortKey = productMetric === 'revenue' ? 'revenue' : 'volume';
-    const result = Object.entries(productData)
-      .filter(([product, data]) => data[sortKey] > 0)
+    return Object.entries(productData)
+      .filter(([, data]) => data[sortKey] > 0)
       .sort(([, a], [, b]) => b[sortKey] - a[sortKey])
       .slice(0, 10)
       .map(([product, data]) => ({
@@ -127,8 +122,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         value: data[sortKey],
         formattedValue: productMetric === 'revenue' ? formatCurrency(data.revenue) : formatNumber(data.volume)
       }));
-
-    return result;
   }, [filteredData, productMetric]);
 
   // Category distribution
@@ -144,7 +137,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       }
     });
 
-    const result = Object.entries(categoryData)
+    return Object.entries(categoryData)
       .filter(([, revenue]) => revenue > 0)
       .sort(([, a], [, b]) => b - a)
       .map(([category, revenue]) => ({
@@ -152,8 +145,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         revenue,
         formattedRevenue: formatCurrency(revenue)
       }));
-
-    return result;
   }, [filteredData]);
 
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
