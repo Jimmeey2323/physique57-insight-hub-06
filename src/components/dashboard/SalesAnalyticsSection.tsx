@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -78,24 +79,28 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     paymentMethod: []
   });
 
-  // Memoized filter function to prevent unnecessary recalculations
-  const applyFilters = useCallback((rawData: SalesData[], includeHistoric: boolean = false) => {
-    let filtered = rawData;
+  // Direct filtering without useCallback to prevent circular dependencies
+  const filteredData = useMemo(() => {
+    console.log('Filtering data for current view...');
+    let filtered = data || [];
 
     // Apply location filter first
     filtered = filtered.filter(item => {
-      const locationMatch = activeLocation === 'kwality' ? item.calculatedLocation === 'Kwality House, Kemps Corner' : activeLocation === 'supreme' ? item.calculatedLocation === 'Supreme HQ, Bandra' : item.calculatedLocation === 'Kenkere House';
+      const locationMatch = activeLocation === 'kwality' 
+        ? item.calculatedLocation === 'Kwality House, Kemps Corner' 
+        : activeLocation === 'supreme' 
+        ? item.calculatedLocation === 'Supreme HQ, Bandra' 
+        : item.calculatedLocation === 'Kenkere House';
       return locationMatch;
     });
 
-    // Apply date range filter - skip for historic data when includeHistoric is true
-    if (!includeHistoric && (filters.dateRange.start || filters.dateRange.end)) {
+    // Apply date range filter
+    if (filters.dateRange.start || filters.dateRange.end) {
       const startDate = filters.dateRange.start ? new Date(filters.dateRange.start) : null;
       const endDate = filters.dateRange.end ? new Date(filters.dateRange.end) : null;
       filtered = filtered.filter(item => {
         if (!item.paymentDate) return false;
 
-        // Enhanced date parsing to handle multiple formats
         let itemDate: Date | null = parseDate(item.paymentDate);
         
         if (!itemDate || isNaN(itemDate.getTime())) return false;
@@ -121,16 +126,29 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     if (filters.maxAmount) {
       filtered = filtered.filter(item => (item.paymentValue || 0) <= filters.maxAmount!);
     }
+    
+    console.log('Filtered data length:', filtered.length);
     return filtered;
-  }, [activeLocation, filters]);
+  }, [data, activeLocation, filters.dateRange.start, filters.dateRange.end, filters.category, filters.paymentMethod, filters.soldBy, filters.minAmount, filters.maxAmount]);
 
-  const filteredData = useMemo(() => applyFilters(data), [data, applyFilters]);
-  const allHistoricData = useMemo(() => applyFilters(data, true), [data, applyFilters]);
+  // Historic data for year-on-year comparison (includes all historical data by location only)
+  const allHistoricData = useMemo(() => {
+    console.log('Filtering historic data...');
+    let filtered = data || [];
 
-  // Get historic data for year-on-year comparison (includes 2024 data)
-  const historicData = useMemo(() => {
-    return applyFilters(data, true);
-  }, [data, applyFilters]);
+    // Apply location filter only for historic data
+    filtered = filtered.filter(item => {
+      const locationMatch = activeLocation === 'kwality' 
+        ? item.calculatedLocation === 'Kwality House, Kemps Corner' 
+        : activeLocation === 'supreme' 
+        ? item.calculatedLocation === 'Supreme HQ, Bandra' 
+        : item.calculatedLocation === 'Kenkere House';
+      return locationMatch;
+    });
+    
+    console.log('Historic data length:', filtered.length);
+    return filtered;
+  }, [data, activeLocation]);
 
   const handleRowClick = (rowData: any) => {
     console.log('Row clicked with data:', rowData);
