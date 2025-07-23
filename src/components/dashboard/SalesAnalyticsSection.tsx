@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -129,7 +130,17 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     
     console.log('Filtered data length:', filtered.length);
     return filtered;
-  }, [data, activeLocation, filters.dateRange.start, filters.dateRange.end, filters.category, filters.paymentMethod, filters.soldBy, filters.minAmount, filters.maxAmount]);
+  }, [
+    data, 
+    activeLocation, 
+    filters.dateRange.start, 
+    filters.dateRange.end, 
+    filters.category, 
+    filters.paymentMethod, 
+    filters.soldBy, 
+    filters.minAmount, 
+    filters.maxAmount
+  ]);
 
   // Historic data for year-on-year comparison (includes all historical data by location only)
   const allHistoricData = useMemo(() => {
@@ -347,3 +358,4 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
 };
 
 export default SalesAnalyticsSection;
+
