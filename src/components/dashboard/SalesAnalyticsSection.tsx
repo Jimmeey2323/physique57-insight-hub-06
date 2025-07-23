@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AutoCloseFilterSection } from './AutoCloseFilterSection';
@@ -57,8 +58,8 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
     paymentMethod: []
   });
 
-  // Helper function to filter data by date range and other filters
-  const applyFilters = (rawData: SalesData[], includeHistoric: boolean = false) => {
+  // Memoized filter function to prevent unnecessary recalculations
+  const applyFilters = useCallback((rawData: SalesData[], includeHistoric: boolean = false) => {
     let filtered = rawData;
 
     // Apply location filter first
@@ -116,15 +117,15 @@ export const SalesAnalyticsSection: React.FC<SalesAnalyticsSectionProps> = ({
       filtered = filtered.filter(item => (item.paymentValue || 0) <= filters.maxAmount!);
     }
     return filtered;
-  };
+  }, [activeLocation, filters]);
 
-  const filteredData = useMemo(() => applyFilters(data), [data, filters, activeLocation]);
-  const allHistoricData = useMemo(() => applyFilters(data, true), [data, activeLocation]);
+  const filteredData = useMemo(() => applyFilters(data), [data, applyFilters]);
+  const allHistoricData = useMemo(() => applyFilters(data, true), [data, applyFilters]);
 
   // Get historic data for year-on-year comparison (includes 2024 data)
   const historicData = useMemo(() => {
     return applyFilters(data, true);
-  }, [data, activeLocation]);
+  }, [data, applyFilters]);
 
   const handleRowClick = (rowData: any) => {
     console.log('Row clicked with data:', rowData);
