@@ -67,7 +67,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       if (!itemDate) return false;
       return itemDate >= startDate && itemDate <= now;
     });
-  }, [data, timeRange, parseDate]);
+  }, [data, timeRange]);
 
   // Monthly revenue trend
   const monthlyRevenue = useMemo(() => {
@@ -90,7 +90,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         revenue: revenue,
         formattedRevenue: formatCurrency(revenue)
       }));
-  }, [filteredData, parseDate]);
+  }, [filteredData]);
 
   // Top 10 products by revenue or volume
   const topProducts = useMemo(() => {
