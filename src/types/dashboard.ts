@@ -1,4 +1,3 @@
-
 export interface SalesData {
   memberId: string;
   customerName: string;
@@ -198,7 +197,8 @@ export type YearOnYearMetricType =
   | 'asv' 
   | 'upt'
   | 'vat'
-  | 'netRevenue';
+  | 'netRevenue'
+  | 'units';
 
 // Data table props interface
 export interface DataTableProps {
