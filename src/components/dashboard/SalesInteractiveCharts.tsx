@@ -62,9 +62,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         startDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
     }
     
-    console.log('Filtering data from:', startDate.toLocaleDateString());
-    console.log('Total data items:', data.length);
-    
     const filtered = data.filter(item => {
       const itemDate = parseDate(item.paymentDate);
       if (!itemDate) return false;
@@ -72,7 +69,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
       return isInRange;
     });
     
-    console.log('Filtered data items:', filtered.length);
     return filtered;
   }, [data, timeRange]);
 
@@ -84,9 +80,9 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     
     filteredData.forEach(item => {
       const date = parseDate(item.paymentDate);
-      if (date) {
+      if (date && item.paymentValue) {
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[monthKey] = (monthlyData[monthKey] || 0) + (item.paymentValue || 0);
+        monthlyData[monthKey] = (monthlyData[monthKey] || 0) + item.paymentValue;
       }
     });
 
@@ -98,7 +94,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         formattedRevenue: formatCurrency(revenue)
       }));
 
-    console.log('Monthly revenue data:', result);
     return result;
   }, [filteredData]);
 
@@ -109,16 +104,19 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     const productData: Record<string, { revenue: number; volume: number }> = {};
     
     filteredData.forEach(item => {
-      const product = item.cleanedProduct || 'Unknown';
-      if (!productData[product]) {
-        productData[product] = { revenue: 0, volume: 0 };
+      const product = item.cleanedProduct || item.product || 'Unknown';
+      if (product && product.trim()) {
+        if (!productData[product]) {
+          productData[product] = { revenue: 0, volume: 0 };
+        }
+        productData[product].revenue += item.paymentValue || 0;
+        productData[product].volume += 1;
       }
-      productData[product].revenue += item.paymentValue || 0;
-      productData[product].volume += 1;
     });
 
     const sortKey = productMetric === 'revenue' ? 'revenue' : 'volume';
     const result = Object.entries(productData)
+      .filter(([product, data]) => data[sortKey] > 0)
       .sort(([, a], [, b]) => b[sortKey] - a[sortKey])
       .slice(0, 10)
       .map(([product, data]) => ({
@@ -130,7 +128,6 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         formattedValue: productMetric === 'revenue' ? formatCurrency(data.revenue) : formatNumber(data.volume)
       }));
 
-    console.log('Top products data:', result);
     return result;
   }, [filteredData, productMetric]);
 
@@ -141,11 +138,14 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
     const categoryData: Record<string, number> = {};
     
     filteredData.forEach(item => {
-      const category = item.cleanedCategory || 'Unknown';
-      categoryData[category] = (categoryData[category] || 0) + (item.paymentValue || 0);
+      const category = item.cleanedCategory || item.category || 'Unknown';
+      if (category && category.trim() && item.paymentValue) {
+        categoryData[category] = (categoryData[category] || 0) + item.paymentValue;
+      }
     });
 
     const result = Object.entries(categoryData)
+      .filter(([, revenue]) => revenue > 0)
       .sort(([, a], [, b]) => b - a)
       .map(([category, revenue]) => ({
         category,
@@ -153,27 +153,10 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
         formattedRevenue: formatCurrency(revenue)
       }));
 
-    console.log('Category distribution:', result);
     return result;
   }, [filteredData]);
 
   const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00', '#ff00ff', '#00ffff', '#ffff00', '#ff0000', '#0000ff'];
-
-  const handleTimeRangeChange = (range: '3m' | '6m' | '12m' | 'ytd') => {
-    console.log('Time range changed to:', range);
-    setTimeRange(range);
-  };
-
-  const handleChartTypeChange = (type: 'bar' | 'line' | 'pie') => {
-    console.log('Chart type changed to:', type);
-    setChartType(type);
-  };
-
-  const handleProductMetricChange = () => {
-    const newMetric = productMetric === 'revenue' ? 'volume' : 'revenue';
-    console.log('Product metric changed to:', newMetric);
-    setProductMetric(newMetric);
-  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -189,28 +172,28 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={timeRange === '3m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => handleTimeRangeChange('3m')}
+                onClick={() => setTimeRange('3m')}
               >
                 3M
               </Button>
               <Button
                 variant={timeRange === '6m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => handleTimeRangeChange('6m')}
+                onClick={() => setTimeRange('6m')}
               >
                 6M
               </Button>
               <Button
                 variant={timeRange === '12m' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => handleTimeRangeChange('12m')}
+                onClick={() => setTimeRange('12m')}
               >
                 12M
               </Button>
               <Button
                 variant={timeRange === 'ytd' ? 'default' : 'outline'}
                 size="sm"
-                onClick={() => handleTimeRangeChange('ytd')}
+                onClick={() => setTimeRange('ytd')}
               >
                 YTD
               </Button>
@@ -243,7 +226,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             <Button
               variant={chartType === 'bar' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => handleChartTypeChange('bar')}
+              onClick={() => setChartType('bar')}
             >
               <BarChart3 className="w-4 h-4 mr-1" />
               Bar
@@ -251,7 +234,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
             <Button
               variant={chartType === 'line' ? 'default' : 'outline'}
               size="sm"
-              onClick={() => handleChartTypeChange('line')}
+              onClick={() => setChartType('line')}
             >
               <TrendingUp className="w-4 h-4 mr-1" />
               Line
@@ -272,7 +255,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={productMetric === 'revenue' ? 'default' : 'outline'}
                 size="sm"
-                onClick={handleProductMetricChange}
+                onClick={() => setProductMetric('revenue')}
               >
                 <DollarSign className="w-4 h-4 mr-1" />
                 Revenue
@@ -280,7 +263,7 @@ export const SalesInteractiveCharts: React.FC<SalesInteractiveChartsProps> = ({ 
               <Button
                 variant={productMetric === 'volume' ? 'default' : 'outline'}
                 size="sm"
-                onClick={handleProductMetricChange}
+                onClick={() => setProductMetric('volume')}
               >
                 <Users className="w-4 h-4 mr-1" />
                 Volume
