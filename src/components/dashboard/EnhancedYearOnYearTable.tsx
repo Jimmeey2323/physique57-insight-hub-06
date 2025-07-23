@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+
+import React, { useMemo, useState, useCallback } from 'react';
 import { SalesData, FilterOptions, YearOnYearMetricType, EnhancedYearOnYearTableProps } from '@/types/dashboard';
 import { YearOnYearMetricTabs } from './YearOnYearMetricTabs';
 import { formatCurrency, formatNumber, formatPercentage } from '@/utils/formatters';
@@ -6,6 +7,7 @@ import { ChevronDown, ChevronRight, RefreshCw, Filter, Calendar, TrendingUp, Dow
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 const groupDataByCategory = (data: SalesData[]) => {
   return data.reduce((acc: Record<string, any>, item) => {
     const category = item.cleanedCategory || 'Uncategorized';
@@ -20,6 +22,7 @@ const groupDataByCategory = (data: SalesData[]) => {
     return acc;
   }, {});
 };
+
 export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = ({
   data,
   filters = {
@@ -40,6 +43,11 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
 }) => {
   const [selectedMetric, setSelectedMetric] = useState<YearOnYearMetricType>(initialMetric);
   const [showFilters, setShowFilters] = useState(false);
+  const [localCollapsedGroups, setLocalCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // Initialize all groups as collapsed by default
+  const [isInitialized, setIsInitialized] = useState(false);
+
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
 
@@ -54,6 +62,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     const date = new Date(dateStr);
     return isNaN(date.getTime()) ? null : date;
   };
+
   const getMetricValue = (items: SalesData[], metric: YearOnYearMetricType) => {
     if (!items.length) return 0;
     switch (metric) {
@@ -63,6 +72,8 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return items.length;
       case 'members':
         return new Set(items.map(item => item.memberId)).size;
+      case 'units':
+        return items.length; // Each sale item is one unit
       case 'atv':
         const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
         return items.length > 0 ? totalRevenue / items.length : 0;
@@ -88,6 +99,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return 0;
     }
   };
+
   const formatMetricValue = (value: number, metric: YearOnYearMetricType) => {
     switch (metric) {
       case 'revenue':
@@ -99,6 +111,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         return formatCurrency(value);
       case 'transactions':
       case 'members':
+      case 'units':
         return formatNumber(value);
       case 'upt':
         return value.toFixed(2);
@@ -152,9 +165,10 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     }
     return months;
   }, []);
+
   const processedData = useMemo(() => {
     const grouped = groupDataByCategory(allHistoricData);
-    return Object.entries(grouped).map(([category, products]) => {
+    const categories = Object.entries(grouped).map(([category, products]) => {
       const categoryData = {
         category,
         products: Object.entries(products).map(([product, items]) => {
@@ -202,11 +216,22 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
         monthlyValues: categoryMonthlyValues
       };
     });
-  }, [allHistoricData, selectedMetric, monthlyData]);
-  const handleRefresh = () => {
+
+    // Initialize all groups as collapsed by default if not already initialized
+    if (!isInitialized && categories.length > 0) {
+      const allCategories = new Set(categories.map(cat => cat.category));
+      setLocalCollapsedGroups(allCategories);
+      setIsInitialized(true);
+    }
+
+    return categories;
+  }, [allHistoricData, selectedMetric, monthlyData, isInitialized]);
+
+  const handleRefresh = useCallback(() => {
     window.location.reload();
-  };
-  const handleExportData = () => {
+  }, []);
+
+  const handleExportData = useCallback(() => {
     const csvContent = processedData.map(categoryGroup => {
       const categoryRow = [categoryGroup.category, ...monthlyData.map(({
         key
@@ -224,11 +249,42 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     a.href = url;
     a.download = `year-on-year-${selectedMetric}-data.csv`;
     a.click();
-  };
-  const handleQuickFilter = (filterType: string) => {
+  }, [processedData, monthlyData, selectedMetric]);
+
+  const handleQuickFilter = useCallback((filterType: string) => {
     console.log(`Applied quick filter: ${filterType}`);
-    // Quick filter implementations here
-  };
+    
+    // Implement actual filter logic
+    switch (filterType) {
+      case 'last6months':
+        // Filter to last 6 months - this would need to communicate with parent component
+        console.log('Filtering to last 6 months');
+        break;
+      case 'highvalue':
+        // Filter to high value items
+        console.log('Filtering to high value items');
+        break;
+      case 'topcategories':
+        // Filter to top categories
+        console.log('Filtering to top categories');
+        break;
+      case 'clearall':
+        // Clear all filters
+        console.log('Clearing all filters');
+        break;
+    }
+  }, []);
+
+  const handleGroupToggle = useCallback((category: string) => {
+    const newCollapsed = new Set(localCollapsedGroups);
+    if (newCollapsed.has(category)) {
+      newCollapsed.delete(category);
+    } else {
+      newCollapsed.add(category);
+    }
+    setLocalCollapsedGroups(newCollapsed);
+  }, [localCollapsedGroups]);
+
   const quickFilters = [{
     label: 'Last 6 Months',
     action: () => handleQuickFilter('last6months'),
@@ -246,6 +302,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
     action: () => handleQuickFilter('clearall'),
     variant: 'destructive' as const
   }];
+
   return <Card className="bg-gradient-to-br from-white via-slate-50/30 to-white border-0 shadow-xl">
       <CardHeader className="pb-4">
         <div className="flex flex-col gap-4">
@@ -311,10 +368,10 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
             </thead>
             <tbody>
               {processedData.map(categoryGroup => <React.Fragment key={categoryGroup.category}>
-                  <tr onClick={() => onGroupToggle(categoryGroup.category)} className="bg-white hover:bg-gray-100 cursor-pointer border-b border-gray-200 group transition-colors duration-200 ease-in-out">
+                  <tr onClick={() => handleGroupToggle(categoryGroup.category)} className="bg-white hover:bg-gray-100 cursor-pointer border-b border-gray-200 group transition-colors duration-200 ease-in-out">
                     <td className="py-4 font-semibold text-gray-800 group-hover:text-gray-900 bg-white group-hover:bg-gray-100 sticky left-0 z-10 transition-colors duration-200 ease-in-out px-[10px] min-w-80 text-sm">
                       <div className="flex justify-between items-center min-w-full text-md text-bold">
-                        {collapsedGroups.has(categoryGroup.category) ? <ChevronRight className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" /> : <ChevronDown className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" />}
+                        {localCollapsedGroups.has(categoryGroup.category) ? <ChevronRight className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" /> : <ChevronDown className="w-4 h-4 mr-2 text-gray-500 transition-transform duration-200" />}
                         {categoryGroup.category}
                         <Badge variant="secondary" className="ml-auto text-sm text-white bg-purple-900 min-w-32 text-right py-1 capitalize rounded-lg px-[12px]">
                           {categoryGroup.products.length} products
@@ -328,7 +385,7 @@ export const EnhancedYearOnYearTable: React.FC<EnhancedYearOnYearTableProps> = (
                       </td>)}
                   </tr>
 
-                  {!collapsedGroups.has(categoryGroup.category) && categoryGroup.products.map(product => <tr key={`${categoryGroup.category}-${product.product}`} className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" onClick={() => onRowClick && onRowClick(product.rawData)}>
+                  {!localCollapsedGroups.has(categoryGroup.category) && categoryGroup.products.map(product => <tr key={`${categoryGroup.category}-${product.product}`} className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" onClick={() => onRowClick && onRowClick(product.rawData)}>
                       <td className="px-8 py-3 text-sm text-gray-700 hover:text-blue-700 sticky left-0 bg-white hover:bg-blue-50 z-10 transition-colors duration-200">
                         <div className="flex items-center justify-between">
                           <span>{product.product}</span>
