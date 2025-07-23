@@ -71,7 +71,6 @@ export const useGoogleSheets = () => {
         memberId: row[0] || '',
         customerName: row[1] || '',
         customerEmail: row[2] || '',
-        payingMemberId: row[3] || '',
         saleItemId: row[4] || '',
         paymentCategory: row[5] || '',
         membershipType: row[6] || '',
