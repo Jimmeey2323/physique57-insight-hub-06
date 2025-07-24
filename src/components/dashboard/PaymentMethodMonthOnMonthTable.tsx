@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { SalesData, YearOnYearMetricType } from '@/types/dashboard';
 import { YearOnYearMetricTabs } from './YearOnYearMetricTabs';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
@@ -43,13 +43,25 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
         return items.length;
       case 'members':
         return new Set(items.map(item => item.memberId)).size;
+      case 'units':
+        return items.length;
       case 'atv':
         const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
         return items.length > 0 ? totalRevenue / items.length : 0;
       case 'auv':
         const revenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
-        const units = items.length; // Each sale item is one unit
+        const units = items.length;
         return units > 0 ? revenue / units : 0;
+      case 'asv':
+        const totalRev = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
+        const uniqueMembers = new Set(items.map(item => item.memberId)).size;
+        return uniqueMembers > 0 ? totalRev / uniqueMembers : 0;
+      case 'upt':
+        const totalTransactions = items.length;
+        const totalUnits = items.length;
+        return totalTransactions > 0 ? totalUnits / totalTransactions : 0;
+      case 'vat':
+        return items.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
       default:
         return 0;
     }
@@ -60,14 +72,24 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
       case 'revenue':
       case 'auv':
       case 'atv':
+      case 'asv':
+      case 'vat':
         return formatCurrency(value);
       case 'transactions':
       case 'members':
+      case 'units':
         return formatNumber(value);
+      case 'upt':
+        return value.toFixed(2);
       default:
         return formatNumber(value);
     }
   };
+
+  const handleQuickFilter = useCallback((filterType: string, value: string) => {
+    // This would be implemented to filter data based on the selected criteria
+    console.log('Quick filter applied:', filterType, value);
+  }, []);
 
   const monthlyData = useMemo(() => {
     const months = [];
@@ -122,28 +144,10 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
       });
 
       const metricValue = getMetricValue(items, selectedMetric);
-      const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
-      const totalTransactions = items.length;
-      const uniqueMembers = new Set(items.map(item => item.memberId)).size;
-      const units = items.length; // Each sale item is one unit
-      
-      // Calculate correct metrics
-      const asv = uniqueMembers > 0 ? totalRevenue / uniqueMembers : 0; // ASV = Revenue/Members
-      const upt = totalTransactions > 0 ? units / totalTransactions : 0; // UPT = Units/Transactions
-      const atv = totalTransactions > 0 ? totalRevenue / totalTransactions : 0; // ATV = Revenue/Transactions
-      const auv = units > 0 ? totalRevenue / units : 0; // AUV = Revenue/Units
       
       return {
         paymentMethod,
         metricValue,
-        totalRevenue,
-        totalTransactions,
-        uniqueMembers,
-        asv,
-        upt,
-        atv,
-        auv,
-        units,
         monthlyValues,
         rawData: items
       };
@@ -176,36 +180,19 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
     );
   };
 
-  // Calculate totals row with proper averages for ATV, ASV, AUV
+  // Calculate totals row
   const totalsRow = useMemo(() => {
     const monthlyTotals: Record<string, number> = {};
     monthlyData.forEach(({ key }) => {
       monthlyTotals[key] = processedData.reduce((sum, item) => sum + (item.monthlyValues[key] || 0), 0);
     });
     
-    const totalRevenue = processedData.reduce((sum, item) => sum + item.totalRevenue, 0);
-    const totalTransactions = processedData.reduce((sum, item) => sum + item.totalTransactions, 0);
-    const totalMembers = new Set(data.map(item => item.memberId)).size;
-    const totalUnits = processedData.reduce((sum, item) => sum + item.units, 0);
-    
-    // Calculate averages for ATV, ASV, AUV (weighted averages)
-    const avgAsv = totalMembers > 0 ? totalRevenue / totalMembers : 0;
-    const avgUpt = totalTransactions > 0 ? totalUnits / totalTransactions : 0;
-    const avgAtv = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-    const avgAuv = totalUnits > 0 ? totalRevenue / totalUnits : 0;
-    
     return {
       paymentMethod: 'TOTAL',
-      metricValue: processedData.reduce((sum, item) => sum + item.metricValue, 0),
-      totalRevenue,
-      totalTransactions,
-      asv: avgAsv,
-      upt: avgUpt,
-      atv: avgAtv,
-      auv: avgAuv,
+      metricValue: getMetricValue(data, selectedMetric),
       monthlyValues: monthlyTotals
     };
-  }, [processedData, monthlyData, data]);
+  }, [processedData, monthlyData, data, selectedMetric]);
 
   const saveSummary = () => {
     setIsEditingSummary(false);
@@ -254,11 +241,6 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
             <thead className="bg-gradient-to-r from-blue-700 to-blue-900 text-white font-semibold text-sm uppercase tracking-wider sticky top-0 z-20">
               <tr>
                 <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-6 py-3 text-left rounded-tl-lg sticky left-0 bg-blue-800 z-30">Payment Method</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-center">ATV</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-center">ASV</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-center">AUV</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-center">UPT</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-center">Transactions</th>
                 {Object.entries(groupedMonths).map(([quarterKey, months]) => (
                   <th key={quarterKey} colSpan={months.length} className="text-white font-semibold text-sm uppercase tracking-wider px-4 py-2 text-center border-l border-blue-600">
                     {quarterKey}
@@ -289,21 +271,6 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
                       {getPaymentMethodBadge(item.paymentMethod)}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(item.atv)}
-                  </td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(item.asv)}
-                  </td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(item.auv)}
-                  </td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
-                    {item.upt.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatNumber(item.totalTransactions)}
-                  </td>
                   {monthlyData.map(({ key }, monthIndex) => {
                     const current = item.monthlyValues[key] || 0;
                     const previous = monthIndex > 0 ? item.monthlyValues[monthlyData[monthIndex - 1].key] || 0 : 0;
@@ -322,21 +289,6 @@ export const PaymentMethodMonthOnMonthTable: React.FC<PaymentMethodMonthOnMonthT
               <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200 font-bold">
                 <td className="px-6 py-3 text-sm font-bold text-blue-900 sticky left-0 bg-blue-100 border-r border-blue-200">
                   TOTAL
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.atv)}
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.asv)}
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.auv)}
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {totalsRow.upt.toFixed(2)}
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatNumber(totalsRow.totalTransactions)}
                 </td>
                 {monthlyData.map(({ key }) => (
                   <td key={key} className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold border-l border-blue-200">

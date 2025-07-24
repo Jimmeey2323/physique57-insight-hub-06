@@ -1,9 +1,9 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { SalesData, FilterOptions, YearOnYearMetricType } from '@/types/dashboard';
 import { YearOnYearMetricTabs } from './YearOnYearMetricTabs';
 import { formatCurrency, formatNumber } from '@/utils/formatters';
-import { Package, TrendingUp, TrendingDown, Star, Edit3, Save, X } from 'lucide-react';
+import { Package, TrendingUp, TrendingDown, Star, ChevronDown, ChevronRight, Edit3, Save, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,6 +32,7 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
   const [selectedMetric, setSelectedMetric] = useState<YearOnYearMetricType>(initialMetric);
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [summaryText, setSummaryText] = useState('• Top performing products driving 60% of total revenue\n• Product diversification strategy showing positive results\n• Focus on high-margin items recommended');
+  const [localCollapsedGroups, setLocalCollapsedGroups] = useState<Set<string>>(new Set());
 
   const parseDate = (dateStr: string): Date | null => {
     if (!dateStr) return null;
@@ -53,13 +54,23 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
         return items.length;
       case 'members':
         return new Set(items.map(item => item.memberId)).size;
+      case 'units':
+        return items.length;
       case 'atv':
         const totalRevenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
         return items.length > 0 ? totalRevenue / items.length : 0;
       case 'auv':
         const revenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
+        const units = items.length;
+        return units > 0 ? revenue / units : 0;
+      case 'asv':
+        const totalRev = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
         const uniqueMembers = new Set(items.map(item => item.memberId)).size;
-        return uniqueMembers > 0 ? revenue / uniqueMembers : 0;
+        return uniqueMembers > 0 ? totalRev / uniqueMembers : 0;
+      case 'upt':
+        return items.length > 0 ? items.length / items.length : 0;
+      case 'vat':
+        return items.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
       default:
         return 0;
     }
@@ -70,14 +81,24 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
       case 'revenue':
       case 'auv':
       case 'atv':
+      case 'asv':
+      case 'vat':
         return formatCurrency(value);
       case 'transactions':
       case 'members':
+      case 'units':
         return formatNumber(value);
+      case 'upt':
+        return value.toFixed(2);
       default:
         return formatNumber(value);
     }
   };
+
+  const handleQuickFilter = useCallback((filterType: string, value: string) => {
+    // This would be implemented to filter data based on the selected criteria
+    console.log('Quick filter applied:', filterType, value);
+  }, []);
 
   // Generate monthly data from Jun 2025 to Jan 2024 (current date backwards)
   const monthlyData = useMemo(() => {
@@ -115,55 +136,65 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
   }, []);
 
   const processedData = useMemo(() => {
-    const productGroups = data.reduce((acc: Record<string, SalesData[]>, item) => {
-      const product = item.cleanedProduct || 'Unspecified';
-      if (!acc[product]) {
-        acc[product] = [];
+    // Group by category first, then by product
+    const categoryGroups = data.reduce((acc: Record<string, SalesData[]>, item) => {
+      const category = item.cleanedCategory || 'Uncategorized';
+      if (!acc[category]) {
+        acc[category] = [];
       }
-      acc[product].push(item);
+      acc[category].push(item);
       return acc;
     }, {});
 
-    const productData = Object.entries(productGroups).map(([product, items]) => {
-      const monthlyValues: Record<string, number> = {};
+    const categoryData = Object.entries(categoryGroups).map(([category, categoryItems]) => {
+      // Group products within each category
+      const productGroups = categoryItems.reduce((acc: Record<string, SalesData[]>, item) => {
+        const product = item.cleanedProduct || 'Unspecified';
+        if (!acc[product]) {
+          acc[product] = [];
+        }
+        acc[product].push(item);
+        return acc;
+      }, {});
 
-      monthlyData.forEach(({ key, year, month }) => {
-        const monthItems = items.filter(item => {
-          const itemDate = parseDate(item.paymentDate);
-          return itemDate && itemDate.getFullYear() === year && itemDate.getMonth() + 1 === month;
+      const products = Object.entries(productGroups).map(([product, items]) => {
+        const monthlyValues: Record<string, number> = {};
+
+        monthlyData.forEach(({ key, year, month }) => {
+          const monthItems = items.filter(item => {
+            const itemDate = parseDate(item.paymentDate);
+            return itemDate && itemDate.getFullYear() === year && itemDate.getMonth() + 1 === month;
+          });
+          monthlyValues[key] = getMetricValue(monthItems, selectedMetric);
         });
-        monthlyValues[key] = getMetricValue(monthItems, selectedMetric);
+
+        const metricValue = getMetricValue(items, selectedMetric);
+        
+        return {
+          product,
+          category,
+          metricValue,
+          monthlyValues,
+          rawData: items
+        };
       });
 
-      const metricValue = getMetricValue(items, selectedMetric);
-      const revenue = items.reduce((sum, item) => sum + (item.paymentValue || 0), 0);
-      const transactions = items.length;
-      const members = new Set(items.map(item => item.memberId)).size;
-      const category = items[0]?.cleanedCategory || 'Uncategorized';
-      const vat = items.reduce((sum, item) => sum + (item.paymentVAT || 0), 0);
-      
-      // Corrected calculations
-      const asv = members > 0 ? revenue / members : 0; // Average Spend per Member (AUV)
-      const atv = transactions > 0 ? revenue / transactions : 0; // Average Transaction Value
-      const upt = transactions; // Units per Transaction (number of transactions)
+      // Calculate category totals
+      const categoryMonthlyValues: Record<string, number> = {};
+      monthlyData.forEach(({ key }) => {
+        categoryMonthlyValues[key] = products.reduce((sum, product) => sum + (product.monthlyValues[key] || 0), 0);
+      });
 
       return {
-        product,
         category,
-        metricValue,
-        revenue,
-        transactions,
-        members,
-        vat,
-        asv,
-        atv,
-        upt,
-        monthlyValues,
-        rawData: items
+        products: products.sort((a, b) => b.metricValue - a.metricValue),
+        metricValue: getMetricValue(categoryItems, selectedMetric),
+        monthlyValues: categoryMonthlyValues,
+        rawData: categoryItems
       };
     });
 
-    return productData.sort((a, b) => b.metricValue - a.metricValue);
+    return categoryData.sort((a, b) => b.metricValue - a.metricValue);
   }, [data, selectedMetric, monthlyData]);
 
   const getPerformanceIndicator = (value: number, index: number) => {
@@ -188,27 +219,15 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
   const totalsRow = useMemo(() => {
     const monthlyTotals: Record<string, number> = {};
     monthlyData.forEach(({ key }) => {
-      monthlyTotals[key] = processedData.reduce((sum, item) => sum + (item.monthlyValues[key] || 0), 0);
+      monthlyTotals[key] = processedData.reduce((sum, category) => sum + (category.monthlyValues[key] || 0), 0);
     });
     
-    const totalRevenue = processedData.reduce((sum, item) => sum + item.revenue, 0);
-    const totalTransactions = processedData.reduce((sum, item) => sum + item.transactions, 0);
-    const totalMembers = new Set(data.map(item => item.memberId)).size;
-    const totalVAT = processedData.reduce((sum, item) => sum + item.vat, 0);
-    
     return {
-      product: 'TOTAL',
-      metricValue: processedData.reduce((sum, item) => sum + item.metricValue, 0),
-      revenue: totalRevenue,
-      transactions: totalTransactions,
-      members: totalMembers,
-      vat: totalVAT,
-      asv: totalMembers > 0 ? totalRevenue / totalMembers : 0,
-      atv: totalTransactions > 0 ? totalRevenue / totalTransactions : 0,
-      upt: totalTransactions,
+      category: 'TOTAL',
+      metricValue: getMetricValue(data, selectedMetric),
       monthlyValues: monthlyTotals
     };
-  }, [processedData, monthlyData, data]);
+  }, [processedData, monthlyData, data, selectedMetric]);
 
   const saveSummary = () => {
     setIsEditingSummary(false);
@@ -231,6 +250,16 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
     });
     return quarters;
   }, [monthlyData]);
+
+  const toggleGroup = (groupKey: string) => {
+    const newCollapsed = new Set(localCollapsedGroups);
+    if (newCollapsed.has(groupKey)) {
+      newCollapsed.delete(groupKey);
+    } else {
+      newCollapsed.add(groupKey);
+    }
+    setLocalCollapsedGroups(newCollapsed);
+  };
 
   return (
     <Card className="bg-gradient-to-br from-white via-slate-50/30 to-white border-0 shadow-xl rounded-xl">
@@ -257,13 +286,7 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
           <table className="min-w-full bg-white border-t border-gray-200 rounded-lg">
             <thead className="bg-gradient-to-r from-blue-700 to-blue-900 text-white font-semibold text-sm uppercase tracking-wider sticky top-0 z-20">
               <tr>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-left rounded-tl-lg sticky left-0 bg-blue-800 z-30">Rank</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-left sticky left-12 bg-blue-800 z-30">Product</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-left">Category</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-3 py-3 text-center">ATV</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-3 py-3 text-center">ASV</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-3 py-3 text-center">UPT</th>
-                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-3 py-3 text-center">VAT</th>
+                <th rowSpan={2} className="text-white font-semibold uppercase tracking-wider px-4 py-3 text-left rounded-tl-lg sticky left-0 bg-blue-800 z-30">Category / Product</th>
                 {Object.entries(groupedMonths).map(([quarterKey, months]) => (
                   <th key={quarterKey} colSpan={months.length} className="text-white font-semibold text-sm uppercase tracking-wider px-4 py-2 text-center border-l border-blue-600">
                     {quarterKey}
@@ -282,69 +305,78 @@ export const ProductPerformanceTable: React.FC<ProductPerformanceTableProps> = (
               </tr>
             </thead>
             <tbody>
-              {processedData.map((product, index) => (
-                <tr key={product.product} className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" onClick={() => onRowClick(product.rawData)}>
-                  <td className="px-4 py-3 text-center sticky left-0 bg-white border-r border-gray-200">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="font-bold text-slate-700">#{index + 1}</span>
-                      {getPerformanceIndicator(product.metricValue, index)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-12 bg-white border-r border-gray-200 max-w-48">
-                    <span className="truncate block">{product.product}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    <Badge variant="outline" className="text-xs">{product.category}</Badge>
-                  </td>
-                  <td className="px-3 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(product.atv)}
-                  </td>
-                  <td className="px-3 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(product.asv)}
-                  </td>
-                  <td className="px-3 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatNumber(product.upt)}
-                  </td>
-                  <td className="px-3 py-3 text-center text-sm text-gray-900 font-mono">
-                    {formatCurrency(product.vat)}
-                  </td>
-                  {monthlyData.map(({ key }, monthIndex) => {
-                    const current = product.monthlyValues[key] || 0;
-                    const previous = monthIndex > 0 ? product.monthlyValues[monthlyData[monthIndex - 1].key] || 0 : 0;
-                    return (
-                      <td key={key} className="px-3 py-3 text-center text-sm text-gray-900 font-mono border-l border-gray-100">
-                        <div className="flex items-center justify-center">
-                          {formatMetricValue(current, selectedMetric)}
-                          {getGrowthIndicator(current, previous)}
+              {processedData.map((categoryData, categoryIndex) => (
+                <React.Fragment key={categoryData.category}>
+                  {/* Category Header Row */}
+                  <tr className="bg-gradient-to-r from-gray-100 to-gray-200 border-b-2 border-gray-300 font-bold">
+                    <td className="px-4 py-3 text-sm font-bold text-gray-800 sticky left-0 bg-gradient-to-r from-gray-100 to-gray-200 border-r border-gray-300">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleGroup(categoryData.category)}
+                          className="p-1 h-6 w-6 text-gray-600 hover:text-gray-800"
+                        >
+                          {localCollapsedGroups.has(categoryData.category) ? 
+                            <ChevronRight className="w-4 h-4" /> : 
+                            <ChevronDown className="w-4 h-4" />
+                          }
+                        </Button>
+                        <span className="font-bold">#{categoryIndex + 1} {categoryData.category}</span>
+                        <Badge variant="outline" className="text-xs bg-gray-200">
+                          {categoryData.products.length} products
+                        </Badge>
+                        {getPerformanceIndicator(categoryData.metricValue, categoryIndex)}
+                      </div>
+                    </td>
+                    {monthlyData.map(({ key }, monthIndex) => {
+                      const current = categoryData.monthlyValues[key] || 0;
+                      const previous = monthIndex > 0 ? categoryData.monthlyValues[monthlyData[monthIndex - 1].key] || 0 : 0;
+                      return (
+                        <td key={key} className="px-3 py-3 text-center text-sm text-gray-800 font-mono font-bold border-l border-gray-300">
+                          <div className="flex items-center justify-center">
+                            {formatMetricValue(current, selectedMetric)}
+                            {getGrowthIndicator(current, previous)}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  
+                  {/* Product Rows */}
+                  {!localCollapsedGroups.has(categoryData.category) && categoryData.products.map((product, productIndex) => (
+                    <tr 
+                      key={`${categoryData.category}-${product.product}`}
+                      className="hover:bg-blue-50 cursor-pointer border-b border-gray-100 transition-colors duration-200" 
+                      onClick={() => onRowClick(product.rawData)}
+                    >
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 sticky left-0 bg-white border-r border-gray-200 max-w-48">
+                        <div className="flex items-center gap-2 pl-8">
+                          <span className="text-gray-500">#{productIndex + 1}</span>
+                          <span className="truncate">{product.product}</span>
                         </div>
                       </td>
-                    );
-                  })}
-                </tr>
+                      {monthlyData.map(({ key }, monthIndex) => {
+                        const current = product.monthlyValues[key] || 0;
+                        const previous = monthIndex > 0 ? product.monthlyValues[monthlyData[monthIndex - 1].key] || 0 : 0;
+                        return (
+                          <td key={key} className="px-3 py-3 text-center text-sm text-gray-900 font-mono border-l border-gray-100">
+                            <div className="flex items-center justify-center">
+                              {formatMetricValue(current, selectedMetric)}
+                              {getGrowthIndicator(current, previous)}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
               
               {/* Totals Row */}
               <tr className="bg-gradient-to-r from-blue-50 to-blue-100 border-t-2 border-blue-200 font-bold">
-                <td className="px-4 py-3 text-center sticky left-0 bg-blue-100 border-r border-blue-200">
-                  <span className="font-bold text-blue-900">TOTAL</span>
-                </td>
-                <td className="px-4 py-3 text-sm font-bold text-blue-900 sticky left-12 bg-blue-100 border-r border-blue-200">
-                  ALL PRODUCTS
-                </td>
-                <td className="px-4 py-3 text-sm text-blue-900">
-                  <Badge variant="outline" className="text-xs text-blue-700">All Categories</Badge>
-                </td>
-                <td className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.atv)}
-                </td>
-                <td className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.asv)}
-                </td>
-                <td className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatNumber(totalsRow.upt)}
-                </td>
-                <td className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold">
-                  {formatCurrency(totalsRow.vat)}
+                <td className="px-4 py-3 text-sm font-bold text-blue-900 sticky left-0 bg-blue-100 border-r border-blue-200">
+                  TOTAL
                 </td>
                 {monthlyData.map(({ key }) => (
                   <td key={key} className="px-3 py-3 text-center text-sm text-blue-900 font-mono font-bold border-l border-blue-200">
