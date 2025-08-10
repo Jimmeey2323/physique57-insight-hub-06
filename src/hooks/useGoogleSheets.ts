@@ -10,7 +10,7 @@ const GOOGLE_CONFIG = {
 };
 
 
-const SPREADSHEET_ID = "1GY78saGWgQLnuHeM3zwG01ahZ_2t0Y-WhNS2sz0PK4Q";
+const SPREADSHEET_ID = "149ILDqovzZA6FRUJKOwzutWdVqmqWBtWPfzG3A0zxTI";
 
 export const useGoogleSheets = () => {
   const [data, setData] = useState<SalesData[]>([]);
@@ -46,7 +46,7 @@ export const useGoogleSheets = () => {
       const accessToken = await getAccessToken();
       
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/◉ Sales?alt=json`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sales?alt=json`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
